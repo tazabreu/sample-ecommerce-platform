@@ -143,6 +143,7 @@ resilience4j:
         timeout-duration: 5s
 
 # Logging Configuration
+# Note: JSON logging is configured in logback-spring.xml
 logging:
   level:
     root: INFO
@@ -152,9 +153,6 @@ logging:
     org.springframework.kafka: INFO
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{correlationId}] - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{correlationId}] - %msg%n"
 
 # SpringDoc OpenAPI Configuration
 springdoc:

@@ -49,9 +49,9 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass dev_redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "dev_redis_password", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -134,6 +134,9 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-customer:5432/customer_db
       - SPRING_DATASOURCE_USERNAME=customer_user
       - SPRING_DATASOURCE_PASSWORD=customer_pass
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=dev_redis_password
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
@@ -202,7 +205,6 @@ volumes:
 networks:
   ecommerce-network:
     driver: bridge
-
 
 
 

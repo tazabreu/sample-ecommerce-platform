@@ -14,6 +14,8 @@ import com.ecommerce.shared.event.CustomerEvent;
 import com.ecommerce.shared.event.OrderCreatedEvent;
 import com.ecommerce.shared.event.OrderItemEvent;
 import com.ecommerce.shared.event.ShippingAddressEvent;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
 import jakarta.persistence.LockModeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,15 +64,27 @@ public class CheckoutService {
     private final CartService cartService;
     private final ProductRepository productRepository;
     private final OrderCreatedEventPublisher eventPublisher;
+    private final Counter checkoutAttemptsCounter;
+    private final Counter checkoutSuccessCounter;
+    private final Counter checkoutFailuresCounter;
+    private final Timer checkoutDurationTimer;
 
     public CheckoutService(
             CartService cartService,
             ProductRepository productRepository,
-            OrderCreatedEventPublisher eventPublisher
+            OrderCreatedEventPublisher eventPublisher,
+            Counter checkoutAttemptsCounter,
+            Counter checkoutSuccessCounter,
+            Counter checkoutFailuresCounter,
+            Timer checkoutDurationTimer
     ) {
         this.cartService = cartService;
         this.productRepository = productRepository;
         this.eventPublisher = eventPublisher;
+        this.checkoutAttemptsCounter = checkoutAttemptsCounter;
+        this.checkoutSuccessCounter = checkoutSuccessCounter;
+        this.checkoutFailuresCounter = checkoutFailuresCounter;
+        this.checkoutDurationTimer = checkoutDurationTimer;
     }
 
     /**
@@ -87,64 +101,79 @@ public class CheckoutService {
      */
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public CheckoutResponse checkout(CheckoutRequest request) {
-        String sessionId = request.sessionId();
-        CustomerInfoDto customerInfo = request.customerInfo();
+        // Increment checkout attempts counter
+        checkoutAttemptsCounter.increment();
 
-        logger.info("Starting checkout - sessionId: {}, customer: {}", 
-                sessionId, customerInfo.email());
+        // Time the checkout process
+        return checkoutDurationTimer.record(() -> {
+            try {
+                String sessionId = request.sessionId();
+                CustomerInfoDto customerInfo = request.customerInfo();
 
-        // 1. Validate cart exists and is not empty
-        Cart cart = cartService.getCart(sessionId);
-        if (cart.isEmpty()) {
-            throw new IllegalStateException("Cannot checkout with empty cart");
-        }
+                logger.info("Starting checkout - sessionId: {}, customer: {}",
+                        sessionId, customerInfo.email());
 
-        logger.info("Checkout cart validation passed - cartId: {}, items: {}, subtotal: {}", 
-                cart.getId(), cart.getTotalItemCount(), cart.getSubtotal());
+                // 1. Validate cart exists and is not empty
+                Cart cart = cartService.getCart(sessionId);
+                if (cart.isEmpty()) {
+                    throw new IllegalStateException("Cannot checkout with empty cart");
+                }
 
-        // 2. Generate order number
-        String orderNumber = generateOrderNumber();
-        UUID orderId = UUID.randomUUID();
+                logger.info("Checkout cart validation passed - cartId: {}, items: {}, subtotal: {}",
+                        cart.getId(), cart.getTotalItemCount(), cart.getSubtotal());
 
-        logger.info("Generated order - orderNumber: {}, orderId: {}", orderNumber, orderId);
+                // 2. Generate order number
+                String orderNumber = generateOrderNumber();
+                UUID orderId = UUID.randomUUID();
 
-        // 3. Decrement inventory with pessimistic locking
-        decrementInventory(cart);
+                logger.info("Generated order - orderNumber: {}, orderId: {}", orderNumber, orderId);
 
-        // 4. Create and publish OrderCreatedEvent
-        OrderCreatedEvent event = createOrderCreatedEvent(
-                orderId, 
-                orderNumber, 
-                cart, 
-                customerInfo
-        );
+                // 3. Decrement inventory with pessimistic locking
+                decrementInventory(cart);
 
-        CompletableFuture<Void> publishFuture = eventPublisher.publishOrderCreated(event)
-                .thenAccept(result -> {
-                    logger.info("OrderCreatedEvent published successfully - orderNumber: {}", orderNumber);
-                })
-                .exceptionally(ex -> {
-                    logger.error("Failed to publish OrderCreatedEvent - orderNumber: {}, error: {}", 
-                            orderNumber, ex.getMessage(), ex);
-                    throw new RuntimeException("Failed to publish order event", ex);
-                });
+                // 4. Create and publish OrderCreatedEvent
+                OrderCreatedEvent event = createOrderCreatedEvent(
+                        orderId,
+                        orderNumber,
+                        cart,
+                        customerInfo
+                );
 
-        // Wait for event to be published (synchronous for transactional consistency)
-        publishFuture.join();
+                CompletableFuture<Void> publishFuture = eventPublisher.publishOrderCreated(event)
+                        .thenAccept(result -> {
+                            logger.info("OrderCreatedEvent published successfully - orderNumber: {}", orderNumber);
+                        })
+                        .exceptionally(ex -> {
+                            logger.error("Failed to publish OrderCreatedEvent - orderNumber: {}, error: {}",
+                                    orderNumber, ex.getMessage(), ex);
+                            throw new RuntimeException("Failed to publish order event", ex);
+                        });
 
-        // 5. Clear the cart
-        cartService.deleteCart(sessionId);
+                // Wait for event to be published (synchronous for transactional consistency)
+                publishFuture.join();
 
-        logger.info("Checkout completed successfully - orderNumber: {}, orderTotal: {}", 
-                orderNumber, cart.getSubtotal());
+                // 5. Clear the cart
+                cartService.deleteCart(sessionId);
 
-        // 6. Return response
-        return new CheckoutResponse(
-                orderNumber,
-                "PENDING",
-                "Order submitted successfully. You will receive a confirmation email at " + 
-                        customerInfo.email()
-        );
+                logger.info("Checkout completed successfully - orderNumber: {}, orderTotal: {}",
+                        orderNumber, cart.getSubtotal());
+
+                // Increment checkout success counter
+                checkoutSuccessCounter.increment();
+
+                // 6. Return response
+                return new CheckoutResponse(
+                        orderNumber,
+                        "PENDING",
+                        "Order submitted successfully. You will receive a confirmation email at " +
+                                customerInfo.email()
+                );
+            } catch (Exception e) {
+                // Increment checkout failures counter
+                checkoutFailuresCounter.increment();
+                throw e;
+            }
+        });
     }
 
     /**

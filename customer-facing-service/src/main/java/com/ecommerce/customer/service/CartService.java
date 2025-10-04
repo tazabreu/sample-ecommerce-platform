@@ -7,6 +7,7 @@ import com.ecommerce.customer.model.CartItem;
 import com.ecommerce.customer.model.Product;
 import com.ecommerce.customer.repository.CartRepository;
 import com.ecommerce.customer.repository.ProductRepository;
+import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -43,15 +44,18 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final RedisTemplate<String, Cart> cartRedisTemplate;
+    private final Counter cartItemsAddedCounter;
 
     public CartService(
             CartRepository cartRepository,
             ProductRepository productRepository,
-            RedisTemplate<String, Cart> cartRedisTemplate
+            RedisTemplate<String, Cart> cartRedisTemplate,
+            Counter cartItemsAddedCounter
     ) {
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
         this.cartRedisTemplate = cartRedisTemplate;
+        this.cartItemsAddedCounter = cartItemsAddedCounter;
     }
 
     /**
@@ -155,7 +159,10 @@ public class CartService {
         cart = cartRepository.save(cart);
         saveToRedis(cart);
 
-        logger.info("Added item to cart - cart id: {}, total items: {}", 
+        // Increment cart items added metric
+        cartItemsAddedCounter.increment();
+
+        logger.info("Added item to cart - cart id: {}, total items: {}",
                 cart.getId(), cart.getTotalItemCount());
 
         return cart;

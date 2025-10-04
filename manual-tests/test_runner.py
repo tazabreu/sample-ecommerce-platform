@@ -52,9 +52,14 @@ POSTGRES_ORDER_CONFIG = {
     "user": "order_user",
     "password": "order_pass"
 }
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "dev_redis_password")
+if REDIS_PASSWORD == "":
+    REDIS_PASSWORD = None
+
 REDIS_CONFIG = {
-    "host": "localhost",
-    "port": 6379,
+    "host": os.getenv("REDIS_HOST", "localhost"),
+    "port": int(os.getenv("REDIS_PORT", "6379")),
+    "password": REDIS_PASSWORD,
     "decode_responses": True
 }
 KAFKA_CONFIG = {

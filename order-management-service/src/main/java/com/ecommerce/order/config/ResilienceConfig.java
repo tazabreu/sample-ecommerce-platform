@@ -54,7 +54,6 @@ public class ResilienceConfig {
     public Retry paymentServiceRetry(RetryRegistry registry) {
         RetryConfig config = RetryConfig.custom()
                 .maxAttempts(3)
-                .waitDuration(Duration.ofSeconds(1))
                 .intervalFunction(IntervalFunction.ofExponentialBackoff(1000, 2.0))
                 .retryExceptions(IOException.class, TimeoutException.class)
                 .build();
@@ -75,4 +74,3 @@ public class ResilienceConfig {
         return registry.timeLimiter("paymentService", config);
     }
 }
-
