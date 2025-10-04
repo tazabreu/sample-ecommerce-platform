@@ -25,32 +25,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
  * Service for handling checkout operations.
- * 
+ *
  * <p>Checkout Flow:</p>
  * <ol>
  *   <li>Validate cart exists and is not empty</li>
- *   <li>Generate unique order number (ORD-YYYYMMDD-###)</li>
+ *   <li>Generate unique order number via DB-backed sequence (ORD-YYYYMMDD-###)</li>
  *   <li>Decrement product inventory with pessimistic locking</li>
  *   <li>Publish OrderCreatedEvent to Kafka</li>
  *   <li>Clear the cart</li>
  *   <li>Return CheckoutResponse</li>
  * </ol>
- * 
+ *
  * <p>Transactional Guarantees:</p>
  * <ul>
  *   <li>SERIALIZABLE isolation for inventory updates</li>
  *   <li>Pessimistic write locks on products</li>
  *   <li>All-or-nothing inventory decrement</li>
+ *   <li>DB-backed order number generation prevents duplicates across instances</li>
  *   <li>Cart cleared only after successful event publishing</li>
  * </ul>
  */
@@ -58,12 +56,11 @@ import java.util.stream.Collectors;
 public class CheckoutService {
 
     private static final Logger logger = LoggerFactory.getLogger(CheckoutService.class);
-    private static final DateTimeFormatter ORDER_NUMBER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private static final AtomicInteger orderSequence = new AtomicInteger(0);
 
     private final CartService cartService;
     private final ProductRepository productRepository;
     private final OrderCreatedEventPublisher eventPublisher;
+    private final OrderNumberService orderNumberService;
     private final Counter checkoutAttemptsCounter;
     private final Counter checkoutSuccessCounter;
     private final Counter checkoutFailuresCounter;
@@ -73,6 +70,7 @@ public class CheckoutService {
             CartService cartService,
             ProductRepository productRepository,
             OrderCreatedEventPublisher eventPublisher,
+            OrderNumberService orderNumberService,
             Counter checkoutAttemptsCounter,
             Counter checkoutSuccessCounter,
             Counter checkoutFailuresCounter,
@@ -81,6 +79,7 @@ public class CheckoutService {
         this.cartService = cartService;
         this.productRepository = productRepository;
         this.eventPublisher = eventPublisher;
+        this.orderNumberService = orderNumberService;
         this.checkoutAttemptsCounter = checkoutAttemptsCounter;
         this.checkoutSuccessCounter = checkoutSuccessCounter;
         this.checkoutFailuresCounter = checkoutFailuresCounter;
@@ -122,8 +121,8 @@ public class CheckoutService {
                 logger.info("Checkout cart validation passed - cartId: {}, items: {}, subtotal: {}",
                         cart.getId(), cart.getTotalItemCount(), cart.getSubtotal());
 
-                // 2. Generate order number
-                String orderNumber = generateOrderNumber();
+                // 2. Generate order number via DB-backed sequence
+                String orderNumber = orderNumberService.generateOrderNumber();
                 UUID orderId = UUID.randomUUID();
 
                 logger.info("Generated order - orderNumber: {}, orderId: {}", orderNumber, orderId);
@@ -278,24 +277,6 @@ public class CheckoutService {
                 cart.getSubtotal(),
                 cart.getId()
         );
-    }
-
-    /**
-     * Generate unique order number in format: ORD-YYYYMMDD-###
-     * 
-     * <p>Format:</p>
-     * <ul>
-     *   <li>ORD: Prefix</li>
-     *   <li>YYYYMMDD: Current date</li>
-     *   <li>###: Sequential number (resets daily)</li>
-     * </ul>
-     *
-     * @return generated order number
-     */
-    private String generateOrderNumber() {
-        String dateStr = LocalDate.now().format(ORDER_NUMBER_DATE_FORMAT);
-        int sequence = orderSequence.incrementAndGet() % 1000; // Reset after 999
-        return String.format("ORD-%s-%03d", dateStr, sequence);
     }
 }
 
