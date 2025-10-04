@@ -54,10 +54,22 @@ A beautiful, interactive CLI application for comprehensive testing of the e-comm
    cd manual-tests
    ```
 
-2. **Install dependencies:**
+2. **Create and activate virtual environment:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
+
+4. **Alternative: Use the wrapper script (recommended):**
+   ```bash
+   ./run_tests.sh --help
+   ```
+   The wrapper script automatically activates the virtual environment for you.
 
 ## 📖 Usage
 
@@ -66,6 +78,13 @@ A beautiful, interactive CLI application for comprehensive testing of the e-comm
 Start the platform and run interactive tests:
 
 ```bash
+./run_tests.sh start --interactive
+```
+
+Or if you prefer to activate the virtual environment manually:
+
+```bash
+source venv/bin/activate
 python test_runner.py start --interactive
 ```
 
@@ -80,7 +99,7 @@ This will:
 If containers are already running:
 
 ```bash
-python test_runner.py interactive
+./run_tests.sh interactive
 ```
 
 ### Detached Mode (Keep Containers Running)
@@ -88,19 +107,19 @@ python test_runner.py interactive
 Start containers and exit (useful for development):
 
 ```bash
-python test_runner.py start --detach
+./run_tests.sh start --detach
 ```
 
 Later, connect and test:
 
 ```bash
-python test_runner.py interactive
+./run_tests.sh interactive
 ```
 
 Stop containers when done:
 
 ```bash
-python test_runner.py stop
+./run_tests.sh stop
 ```
 
 ### Keep Containers Alive After Testing
@@ -108,7 +127,7 @@ python test_runner.py stop
 Run tests but keep containers running:
 
 ```bash
-python test_runner.py start --keep-alive
+./run_tests.sh start --keep-alive
 ```
 
 ## 🎮 Interactive Menu Options

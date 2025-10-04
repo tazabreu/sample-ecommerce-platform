@@ -3,17 +3,20 @@ package com.ecommerce.customer.service;
 import com.ecommerce.customer.dto.CheckoutRequest;
 import com.ecommerce.customer.dto.CheckoutResponse;
 import com.ecommerce.customer.dto.CustomerInfoDto;
-import com.ecommerce.customer.event.OrderCreatedEventPublisher;
 import com.ecommerce.customer.exception.InsufficientInventoryException;
 import com.ecommerce.customer.exception.ResourceNotFoundException;
 import com.ecommerce.customer.model.Cart;
 import com.ecommerce.customer.model.CartItem;
+import com.ecommerce.customer.model.OrderCreatedOutbox;
 import com.ecommerce.customer.model.Product;
+import com.ecommerce.customer.repository.OrderCreatedOutboxRepository;
 import com.ecommerce.customer.repository.ProductRepository;
 import com.ecommerce.shared.event.CustomerEvent;
 import com.ecommerce.shared.event.OrderCreatedEvent;
 import com.ecommerce.shared.event.OrderItemEvent;
 import com.ecommerce.shared.event.ShippingAddressEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import jakarta.persistence.LockModeType;
@@ -27,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -38,7 +40,7 @@ import java.util.stream.Collectors;
  *   <li>Validate cart exists and is not empty</li>
  *   <li>Generate unique order number via DB-backed sequence (ORD-YYYYMMDD-###)</li>
  *   <li>Decrement product inventory with pessimistic locking</li>
- *   <li>Publish OrderCreatedEvent to Kafka</li>
+ *   <li>Write OrderCreatedEvent to transactional outbox</li>
  *   <li>Clear the cart</li>
  *   <li>Return CheckoutResponse</li>
  * </ol>
@@ -49,7 +51,8 @@ import java.util.stream.Collectors;
  *   <li>Pessimistic write locks on products</li>
  *   <li>All-or-nothing inventory decrement</li>
  *   <li>DB-backed order number generation prevents duplicates across instances</li>
- *   <li>Cart cleared only after successful event publishing</li>
+ *   <li>Transactional outbox ensures event is persisted in same transaction</li>
+ *   <li>Background publisher handles Kafka delivery asynchronously</li>
  * </ul>
  */
 @Service
@@ -59,8 +62,9 @@ public class CheckoutService {
 
     private final CartService cartService;
     private final ProductRepository productRepository;
-    private final OrderCreatedEventPublisher eventPublisher;
+    private final OrderCreatedOutboxRepository outboxRepository;
     private final OrderNumberService orderNumberService;
+    private final ObjectMapper objectMapper;
     private final Counter checkoutAttemptsCounter;
     private final Counter checkoutSuccessCounter;
     private final Counter checkoutFailuresCounter;
@@ -69,8 +73,9 @@ public class CheckoutService {
     public CheckoutService(
             CartService cartService,
             ProductRepository productRepository,
-            OrderCreatedEventPublisher eventPublisher,
+            OrderCreatedOutboxRepository outboxRepository,
             OrderNumberService orderNumberService,
+            ObjectMapper objectMapper,
             Counter checkoutAttemptsCounter,
             Counter checkoutSuccessCounter,
             Counter checkoutFailuresCounter,
@@ -78,8 +83,9 @@ public class CheckoutService {
     ) {
         this.cartService = cartService;
         this.productRepository = productRepository;
-        this.eventPublisher = eventPublisher;
+        this.outboxRepository = outboxRepository;
         this.orderNumberService = orderNumberService;
+        this.objectMapper = objectMapper;
         this.checkoutAttemptsCounter = checkoutAttemptsCounter;
         this.checkoutSuccessCounter = checkoutSuccessCounter;
         this.checkoutFailuresCounter = checkoutFailuresCounter;
@@ -130,7 +136,7 @@ public class CheckoutService {
                 // 3. Decrement inventory with pessimistic locking
                 decrementInventory(cart);
 
-                // 4. Create and publish OrderCreatedEvent
+                // 4. Create OrderCreatedEvent and write to outbox
                 OrderCreatedEvent event = createOrderCreatedEvent(
                         orderId,
                         orderNumber,
@@ -138,18 +144,7 @@ public class CheckoutService {
                         customerInfo
                 );
 
-                CompletableFuture<Void> publishFuture = eventPublisher.publishOrderCreated(event)
-                        .thenAccept(result -> {
-                            logger.info("OrderCreatedEvent published successfully - orderNumber: {}", orderNumber);
-                        })
-                        .exceptionally(ex -> {
-                            logger.error("Failed to publish OrderCreatedEvent - orderNumber: {}, error: {}",
-                                    orderNumber, ex.getMessage(), ex);
-                            throw new RuntimeException("Failed to publish order event", ex);
-                        });
-
-                // Wait for event to be published (synchronous for transactional consistency)
-                publishFuture.join();
+                writeToOutbox(orderId, event);
 
                 // 5. Clear the cart
                 cartService.deleteCart(sessionId);
@@ -277,6 +272,29 @@ public class CheckoutService {
                 cart.getSubtotal(),
                 cart.getId()
         );
+    }
+
+    /**
+     * Write OrderCreatedEvent to transactional outbox.
+     * Event will be published asynchronously by background publisher.
+     *
+     * @param orderId the order ID
+     * @param event the order created event
+     */
+    private void writeToOutbox(UUID orderId, OrderCreatedEvent event) {
+        try {
+            String payload = objectMapper.writeValueAsString(event);
+
+            OrderCreatedOutbox outbox = new OrderCreatedOutbox(orderId, payload);
+            outboxRepository.save(outbox);
+
+            logger.info("Wrote OrderCreatedEvent to outbox - orderId: {}, outboxId: {}",
+                    orderId, outbox.getId());
+
+        } catch (JsonProcessingException e) {
+            logger.error("Failed to serialize OrderCreatedEvent to JSON - orderId: {}", orderId, e);
+            throw new RuntimeException("Failed to write event to outbox", e);
+        }
     }
 }
 
