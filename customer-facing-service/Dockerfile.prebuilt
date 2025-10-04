@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+FROM eclipse-temurin:21-jre-alpine
+
+# Add metadata labels
+LABEL org.opencontainers.image.title="Customer Facing Service (Prebuilt)"
+LABEL org.opencontainers.image.description="E-commerce customer-facing microservice (prebuilt)"
+LABEL org.opencontainers.image.version="1.0.0-SNAPSHOT"
+LABEL org.opencontainers.image.vendor="E-Commerce Platform"
+
+# Install curl for healthchecks
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy the pre-built JAR
+COPY --chown=nobody:nobody target/customer-facing-service-1.0.0-SNAPSHOT.jar app.jar
+
+# Use existing nobody user for security
+USER nobody
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+EXPOSE 8080
+
+# JVM tuning for containers
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+
+# Use shell form to allow environment variable expansion
+ENTRYPOINT sh -c "java $JAVA_OPTS -jar app.jar"
+
+
+
+
+

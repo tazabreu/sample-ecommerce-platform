@@ -1,0 +1,37 @@
+version: '3.8'
+
+# Development overrides for local environment
+services:
+  postgres-customer:
+    environment:
+      POSTGRES_PASSWORD: dev_password_customer
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres-order:
+    environment:
+      POSTGRES_PASSWORD: dev_password_order
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    command: redis-server --appendonly yes --requirepass dev_redis_password
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redpanda:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+

@@ -1,0 +1,205 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Customer Service)
+  postgres-customer:
+    image: postgres:15-alpine
+    container_name: postgres-customer
+    environment:
+      POSTGRES_DB: customer_db
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: customer_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-customer-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customer_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
+
+  # PostgreSQL Database (Order Service)
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: order_user
+      POSTGRES_PASSWORD: order_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_user -d order_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
+
+  # Redpanda (Kafka-compatible)
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --smp
+      - '1'
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --node-id
+      - '0'
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr
+      - PLAINTEXT://0.0.0.0:28082,OUTSIDE://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - PLAINTEXT://redpanda:28082,OUTSIDE://localhost:18082
+      - --schema-registry-addr
+      - PLAINTEXT://0.0.0.0:28081,OUTSIDE://0.0.0.0:18081
+      - --rpc-addr
+      - 0.0.0.0:33145
+      - --advertise-rpc-addr
+      - redpanda:33145
+    ports:
+      - "9092:9092"
+      - "18081:8081"
+      - "18082:8082"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - ecommerce-network
+
+  # Create Kafka Topics
+  kafka-setup:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
+    container_name: kafka-setup
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo 'Waiting for Redpanda to be ready...';
+      sleep 10;
+      echo 'Creating Kafka topics...';
+      rpk topic create orders.created --brokers redpanda:29092 --partitions 3 --replicas 1 || true;
+      rpk topic create payments.completed --brokers redpanda:29092 --partitions 3 --replicas 1 || true;
+      echo 'Topics created successfully';
+      rpk topic list --brokers redpanda:29092;
+      "
+    networks:
+      - ecommerce-network
+
+  # Customer Facing Service
+  customer-service:
+    build:
+      context: ..
+      dockerfile: customer-facing-service/Dockerfile
+    container_name: customer-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-customer:5432/customer_db
+      - SPRING_DATASOURCE_USERNAME=customer_user
+      - SPRING_DATASOURCE_PASSWORD=customer_pass
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-customer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - ecommerce-network
+
+  # Order Management Service
+  order-service:
+    build:
+      context: ..
+      dockerfile: order-management-service/Dockerfile
+    container_name: order-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-order:5432/order_db
+      - SPRING_DATASOURCE_USERNAME=order_user
+      - SPRING_DATASOURCE_PASSWORD=order_pass
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - ecommerce-network
+
+volumes:
+  postgres-customer-data:
+    driver: local
+  postgres-order-data:
+    driver: local
+  redis-data:
+    driver: local
+  redpanda-data:
+    driver: local
+
+networks:
+  ecommerce-network:
+    driver: bridge
+

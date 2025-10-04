@@ -1,0 +1,35 @@
+# Test profile configuration
+
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:15-alpine:///testdb
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    root: WARN
+    com.ecommerce.customer: DEBUG
+    org.testcontainers: INFO
+
+# Disable Redis for contract tests - they don't need cart functionality
+app:
+  cart:
+    storage: in-memory
+    ttl-minutes: 5
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+  security:
+    jwt:
+      enabled: false
+      mock-enabled: true
+

@@ -1,0 +1,24 @@
+# speckit-miguel-tass-ecommerce Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-09-30
+
+## Active Technologies
+- Java 21 (Spring Boot 3.x LTS) + Spring Boot 3.x, Spring Data JPA, Spring Web, Spring Kafka, Resilience4j, Micrometer, Spring Boot Actuator, SpringDoc OpenAPI (001-e-commerce-platform)
+
+## Project Structure
+```
+src/
+tests/
+```
+
+## Commands
+# Add commands for Java 21 (Spring Boot 3.x LTS)
+
+## Code Style
+Java 21 (Spring Boot 3.x LTS): Follow standard conventions
+
+## Recent Changes
+- 001-e-commerce-platform: Added Java 21 (Spring Boot 3.x LTS) + Spring Boot 3.x, Spring Data JPA, Spring Web, Spring Kafka, Resilience4j, Micrometer, Spring Boot Actuator, SpringDoc OpenAPI
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->
