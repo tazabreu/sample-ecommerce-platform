@@ -79,9 +79,9 @@ public class AuthController {
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException ex) {
-            logger.warn("Mock login failed for username: {}, error: {}", 
+            logger.warn("Mock login failed for username: {}, error: {}",
                     request.username(), ex.getMessage());
-            
+
             return ResponseEntity.status(401).body(
                     new LoginResponse(null, null, 0)
             );

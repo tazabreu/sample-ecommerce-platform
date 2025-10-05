@@ -20,6 +20,7 @@ buildNumber.properties
 .classpath
 .project
 .factorypath
+.claude/
 
 # macOS
 .DS_Store
@@ -42,9 +43,29 @@ logs/
 *.ear
 hs_err_pid*
 
+# Build directories
+build/
+dist/
+out/
+bin/
+.gradle/
+node_modules/
+
 # Temporary files
 *.tmp
 *.bak
 *.swp
 *~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
 

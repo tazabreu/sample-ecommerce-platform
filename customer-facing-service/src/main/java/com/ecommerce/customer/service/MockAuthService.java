@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -63,8 +64,9 @@ public class MockAuthService {
         Instant now = Instant.now();
         Instant expiration = now.plus(jwtExpirationMinutes, ChronoUnit.MINUTES);
 
-        // Create secret key
-        SecretKey secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        // Create secret key - use HS256 to match SecurityConfig
+        SecretKey secretKey = new SecretKeySpec(
+                jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 
         String token = Jwts.builder()
                 .subject(username)

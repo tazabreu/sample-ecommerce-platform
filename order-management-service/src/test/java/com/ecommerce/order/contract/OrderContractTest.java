@@ -9,6 +9,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
 
 import static io.restassured.RestAssured.given;
+import com.ecommerce.order.testsupport.JwtTestUtils;
 import static org.hamcrest.Matchers.*;
 
 /**
@@ -58,8 +59,11 @@ class OrderContractTest {
 
     @Test
     void listOrders_shouldReturnPagedResponse() {
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .queryParam("page", 0)
             .queryParam("size", 20)
         .when()
@@ -76,8 +80,11 @@ class OrderContractTest {
 
     @Test
     void listOrders_withStatusFilter_shouldFilterResults() {
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .queryParam("status", "PAID")
             .queryParam("page", 0)
             .queryParam("size", 20)
@@ -91,8 +98,11 @@ class OrderContractTest {
 
     @Test
     void listOrders_withEmailFilter_shouldFilterResults() {
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .queryParam("customerEmail", "test@example.com")
             .queryParam("page", 0)
             .queryParam("size", 20)
@@ -106,8 +116,11 @@ class OrderContractTest {
 
     @Test
     void listOrders_withDateRangeFilter_shouldFilterResults() {
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .queryParam("startDate", "2025-09-01T00:00:00Z")
             .queryParam("endDate", "2025-09-30T23:59:59Z")
             .queryParam("page", 0)
@@ -129,8 +142,11 @@ class OrderContractTest {
             }
             """;
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/orders/" + orderNumber + "/cancel")
@@ -147,8 +163,11 @@ class OrderContractTest {
             }
             """;
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/orders/" + orderNumber + "/cancel")
@@ -167,8 +186,11 @@ class OrderContractTest {
             }
             """;
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/orders/" + orderNumber + "/fulfill")
@@ -185,8 +207,11 @@ class OrderContractTest {
             }
             """;
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/orders/" + orderNumber + "/fulfill")

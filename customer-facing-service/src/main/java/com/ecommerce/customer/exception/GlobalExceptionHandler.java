@@ -14,11 +14,13 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>ResourceNotFoundException → 404 Not Found</li>
  *   <li>IllegalArgumentException → 400 Bad Request</li>
+ *   <li>IllegalStateException → 400 Bad Request</li>
  *   <li>ConstraintViolationException → 400 Bad Request</li>
  *   <li>MethodArgumentNotValidException → 400 Bad Request</li>
  *   <li>OptimisticLockException → 409 Conflict</li>
@@ -75,6 +78,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
         logger.warn("Illegal argument: {}", ex.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setType(URI.create("https://api.ecommerce.com/problems/bad-request"));
+        problem.setTitle("Bad Request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
+    }
+
+    /**
+     * Handle illegal state exceptions.
+     *
+     * @param ex the exception
+     * @param request the HTTP request
+     * @return 400 RFC 7807 Problem Detail response
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ProblemDetail> handleIllegalState(IllegalStateException ex, HttpServletRequest request) {
+        logger.warn("Illegal state: {}", ex.getMessage());
 
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setType(URI.create("https://api.ecommerce.com/problems/bad-request"));
@@ -204,6 +227,62 @@ public class GlobalExceptionHandler {
         problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    /**
+     * Handle duplicate resource exceptions.
+     *
+     * @param ex the exception
+     * @param request the HTTP request
+     * @return 409 RFC 7807 Problem Detail response
+     */
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ProblemDetail> handleDuplicateResource(DuplicateResourceException ex, HttpServletRequest request) {
+        logger.warn("Duplicate resource: {}", ex.getMessage());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setType(URI.create("https://api.ecommerce.com/problems/duplicate-resource"));
+        problem.setTitle("Duplicate Resource");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    /**
+     * Handle method argument type mismatch exceptions (e.g., invalid UUID format).
+     * Returns 404 if the target type is UUID (path variable), 400 otherwise.
+     *
+     * @param ex the exception
+     * @param request the HTTP request
+     * @return 404 or 400 RFC 7807 Problem Detail response
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ProblemDetail> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        logger.warn("Method argument type mismatch: {} - expected type: {}", ex.getValue(), ex.getRequiredType());
+
+        // If the target type is UUID and it's a path variable, treat as "resource not found" (404)
+        // This handles cases like /api/v1/categories/invalid-uuid
+        if (ex.getRequiredType() != null && UUID.class.isAssignableFrom(ex.getRequiredType())) {
+            ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                    String.format("Resource not found with id: %s", ex.getValue()));
+            problem.setType(URI.create("https://api.ecommerce.com/problems/resource-not-found"));
+            problem.setTitle("Resource Not Found");
+            problem.setInstance(URI.create(request.getRequestURI()));
+            problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
+
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
+        }
+
+        // For other type mismatches, return 400 Bad Request
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName()));
+        problem.setType(URI.create("https://api.ecommerce.com/problems/bad-request"));
+        problem.setTitle("Bad Request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**

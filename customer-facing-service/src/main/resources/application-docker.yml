@@ -1,0 +1,35 @@
+# Docker profile configuration
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-customer:5432/customer_db}
+    username: ${SPRING_DATASOURCE_USERNAME:customer_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:dev_password_customer}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:dev_redis_password}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:redpanda:9092}
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce.customer: INFO
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.springframework.kafka: INFO
+
+app:
+  security:
+    jwt:
+      mock-enabled: true

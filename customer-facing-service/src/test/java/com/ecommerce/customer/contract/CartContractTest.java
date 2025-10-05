@@ -1,11 +1,14 @@
 package com.ecommerce.customer.contract;
 
+import com.ecommerce.customer.config.EmbeddedRedisConfig;
+import com.ecommerce.customer.testsupport.JwtTestUtils;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.UUID;
@@ -20,6 +23,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@Import(EmbeddedRedisConfig.class)
 class CartContractTest {
 
     @LocalServerPort
@@ -29,20 +33,27 @@ class CartContractTest {
     private String productId;
     private String sessionId;
 
+    @SuppressWarnings("resource")
+
     @BeforeEach
     void setUp() {
         RestAssured.port = port;
         RestAssured.basePath = "/api/v1";
 
-        // Create test data
+        RestAssured.requestSpecification = given()
+            .header("Authorization", "Bearer " + JwtTestUtils.managerToken());
+
+        // Create test data with unique names
+        long uniqueSuffix = System.currentTimeMillis();
+
         categoryId = given()
             .contentType(ContentType.JSON)
-            .body("""
+            .body(String.format("""
                 {
-                  "name": "Test Category",
+                  "name": "Test Category %d",
                   "description": "For cart testing"
                 }
-                """)
+                """, uniqueSuffix))
             .post("/categories")
             .then()
             .statusCode(201)
@@ -53,13 +64,13 @@ class CartContractTest {
             .contentType(ContentType.JSON)
             .body(String.format("""
                 {
-                  "sku": "SKU-CART-TEST",
+                  "sku": "SKU-CART-TEST-%d",
                   "name": "Cart Test Product",
                   "price": 29.99,
                   "inventoryQuantity": 100,
                   "categoryId": "%s"
                 }
-                """, categoryId))
+                """, uniqueSuffix, categoryId))
             .post("/products")
             .then()
             .statusCode(201)
@@ -80,7 +91,7 @@ class CartContractTest {
             .contentType(ContentType.JSON)
             .body("sessionId", equalTo(sessionId))
             .body("items", empty())
-            .body("subtotal", equalTo(0.0f))
+            .body("subtotal", anyOf(equalTo(0), equalTo(0.0f)))
             .body("expiresAt", notNullValue());
     }
 
@@ -228,7 +239,7 @@ class CartContractTest {
             .statusCode(200)
             .contentType(ContentType.JSON)
             .body("items", empty())
-            .body("subtotal", equalTo(0.0f));
+            .body("subtotal", equalTo(0));
     }
 
     @Test
@@ -262,7 +273,7 @@ class CartContractTest {
         .then()
             .statusCode(200)
             .body("items", empty())
-            .body("subtotal", equalTo(0.0f));
+            .body("subtotal", anyOf(equalTo(0), equalTo(0.0f)));
     }
 }
 

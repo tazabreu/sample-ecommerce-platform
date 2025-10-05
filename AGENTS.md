@@ -22,6 +22,10 @@ Agents may be humans or automated assistants; responsibilities are about decisio
 6. Traceability: propagate `X-Correlation-ID` from edge to events; include in logs and metrics.
 7. Environments: prefer ephemeral, hermetic tests (Testcontainers); use profiles to toggle optional infra (e.g., Redis).
 
+8. Java Version: All modules target Java 21. Do not introduce JDK 22+ specific flags, APIs, or build args. Tooling and CI should use Java 21.
+
+9. Test Annotation Processing: Avoid enabling annotation processors for test sources unless a test explicitly requires it. Prefer simple test doubles or hand-rolled mappers in test scope. If annotation processing causes instability, disable it for tests.
+
 ### Technical Conventions
 
 - API Errors: `application/problem+json` with fields: `type`, `title`, `status`, `detail`, `instance`.
@@ -44,9 +48,9 @@ Agents may be humans or automated assistants; responsibilities are about decisio
 
 ### Guardrails for AI Agents
 
+- Ask intelligent questions for important decision-making; the user is the human-in-the-loop and should always be clarifying questions before agents implement significant changes.
 - Never make irreversible data migrations without a backup plan and a rollback task.
 - Prefer editing existing files using minimal diffs; do not reformat unrelated code.
-- Do not bypass tests; add them first, keep them deterministic.
 - Cite code using file:line snippets when proposing changes in discussions.
 - Maintain up-to-date `.env.example` files when environment variables are added/changed in application.yml files.
 
@@ -56,5 +60,3 @@ Agents may be humans or automated assistants; responsibilities are about decisio
 - Transactional Outbox pattern (a.k.a. Outbox/Inbox)
 - Kafka DLT and retry/backoff patterns
 - RED/USE monitoring patterns and Micrometer
-
-

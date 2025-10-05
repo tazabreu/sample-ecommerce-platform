@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,7 +37,9 @@ import java.util.UUID;
     @Index(name = "idx_product_category", columnList = "category_id"),
     @Index(name = "idx_product_active", columnList = "is_active")
 })
-public class Product {
+public class Product implements java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -71,6 +74,7 @@ public class Product {
     @NotNull(message = "Category is required")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false, foreignKey = @ForeignKey(name = "fk_product_category"))
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Category category;
 
     @Column(name = "is_active", nullable = false)
@@ -198,6 +202,7 @@ public class Product {
      *
      * @return true if inventory quantity is greater than 0, false otherwise
      */
+    @JsonIgnore
     public boolean isInStock() {
         return inventoryQuantity != null && inventoryQuantity > 0;
     }

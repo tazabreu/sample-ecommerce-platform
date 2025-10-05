@@ -1,14 +1,17 @@
 package com.ecommerce.customer.contract;
 
+import com.ecommerce.customer.config.EmbeddedRedisConfig;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import static io.restassured.RestAssured.given;
+import com.ecommerce.customer.testsupport.JwtTestUtils;
 import static org.hamcrest.Matchers.*;
 
 /**
@@ -18,6 +21,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@Import(EmbeddedRedisConfig.class)
 class CategoryContractTest {
 
     @LocalServerPort
@@ -50,8 +54,11 @@ class CategoryContractTest {
             }
             """;
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/categories")
@@ -85,8 +92,11 @@ class CategoryContractTest {
     @Test
     void getCategoryById_withValidId_shouldReturn200() {
         // First create a category
+        String token = JwtTestUtils.managerToken();
+
         String categoryId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body("""
                 {
                   "name": "Books",
@@ -127,8 +137,11 @@ class CategoryContractTest {
     @Test
     void updateCategory_withValidData_shouldReturn200() {
         // First create a category
+        String token = JwtTestUtils.managerToken();
+
         String categoryId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body("""
                 {
                   "name": "Clothing",
@@ -151,6 +164,7 @@ class CategoryContractTest {
 
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(updateBody)
         .when()
             .put("/categories/" + categoryId)
@@ -165,8 +179,11 @@ class CategoryContractTest {
     @Test
     void deleteCategory_withValidId_shouldReturn204() {
         // First create a category
+        String token = JwtTestUtils.managerToken();
+
         String categoryId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body("""
                 {
                   "name": "Temporary Category",
@@ -182,6 +199,7 @@ class CategoryContractTest {
         // Then delete it
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
         .when()
             .delete("/categories/" + categoryId)
         .then()

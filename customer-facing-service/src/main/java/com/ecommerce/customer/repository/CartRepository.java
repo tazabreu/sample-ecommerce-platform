@@ -1,6 +1,7 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.Cart;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -26,6 +27,15 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      * @return an Optional containing the cart, or empty if not found
      */
     Optional<Cart> findBySessionId(String sessionId);
+
+    /**
+     * Finds a cart by session ID eagerly loading items and associated products.
+     *
+     * @param sessionId the session identifier
+     * @return an Optional containing the cart with items, or empty if not found
+     */
+    @EntityGraph(attributePaths = {"items", "items.product"})
+    Optional<Cart> findWithItemsBySessionId(String sessionId);
 
     /**
      * Checks if a cart with the given session ID exists.

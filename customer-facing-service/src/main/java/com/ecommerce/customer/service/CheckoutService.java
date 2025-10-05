@@ -23,6 +23,7 @@ import jakarta.persistence.LockModeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -76,10 +77,10 @@ public class CheckoutService {
             OrderCreatedOutboxRepository outboxRepository,
             OrderNumberService orderNumberService,
             ObjectMapper objectMapper,
-            Counter checkoutAttemptsCounter,
-            Counter checkoutSuccessCounter,
-            Counter checkoutFailuresCounter,
-            Timer checkoutDurationTimer
+            @Qualifier("checkoutAttemptsCounter") Counter checkoutAttemptsCounter,
+            @Qualifier("checkoutSuccessCounter") Counter checkoutSuccessCounter,
+            @Qualifier("checkoutFailuresCounter") Counter checkoutFailuresCounter,
+            @Qualifier("checkoutDurationTimer") Timer checkoutDurationTimer
     ) {
         this.cartService = cartService;
         this.productRepository = productRepository;
@@ -118,7 +119,7 @@ public class CheckoutService {
                 logger.info("Starting checkout - sessionId: {}, customer: {}",
                         sessionId, customerInfo.email());
 
-                // 1. Validate cart exists and is not empty
+                // 1. Get cart and validate it's not empty
                 Cart cart = cartService.getCart(sessionId);
                 if (cart.isEmpty()) {
                     throw new IllegalStateException("Cannot checkout with empty cart");

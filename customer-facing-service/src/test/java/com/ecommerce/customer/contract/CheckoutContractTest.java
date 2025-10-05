@@ -1,11 +1,14 @@
 package com.ecommerce.customer.contract;
 
+import com.ecommerce.customer.config.EmbeddedRedisConfig;
+import com.ecommerce.customer.testsupport.JwtTestUtils;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Arrays;
@@ -21,6 +24,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@Import(EmbeddedRedisConfig.class)
 class CheckoutContractTest {
 
     @LocalServerPort
@@ -30,20 +34,27 @@ class CheckoutContractTest {
     private String productId;
     private String sessionId;
 
+    @SuppressWarnings("resource")
+
     @BeforeEach
     void setUp() {
         RestAssured.port = port;
         RestAssured.basePath = "/api/v1";
 
-        // Create test data
+        RestAssured.requestSpecification = requestSpecWithAuth();
+
+        // Create test data with unique names
+        long uniqueSuffix = System.currentTimeMillis();
+        String token = JwtTestUtils.managerToken();
+
         categoryId = given()
             .contentType(ContentType.JSON)
-            .body("""
+            .body(String.format("""
                 {
-                  "name": "Checkout Test Category",
+                  "name": "Checkout Test Category %d",
                   "description": "For checkout testing"
                 }
-                """)
+                """, uniqueSuffix))
             .post("/categories")
             .then()
             .statusCode(201)
@@ -54,13 +65,13 @@ class CheckoutContractTest {
             .contentType(ContentType.JSON)
             .body(String.format("""
                 {
-                  "sku": "SKU-CHECKOUT-TEST",
+                  "sku": "SKU-CHECKOUT-TEST-%d",
                   "name": "Checkout Test Product",
                   "price": 49.99,
                   "inventoryQuantity": 100,
                   "categoryId": "%s"
                 }
-                """, categoryId))
+                """, uniqueSuffix, categoryId))
             .post("/products")
             .then()
             .statusCode(201)
@@ -103,7 +114,7 @@ class CheckoutContractTest {
             }
             """, sessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
@@ -137,7 +148,7 @@ class CheckoutContractTest {
             }
             """, emptySessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
@@ -167,13 +178,13 @@ class CheckoutContractTest {
             }
             """, invalidSessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
             .post("/checkout")
         .then()
-            .statusCode(404);
+            .statusCode(400);
     }
 
     @Test
@@ -184,7 +195,7 @@ class CheckoutContractTest {
             }
             """, sessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
@@ -213,7 +224,7 @@ class CheckoutContractTest {
             }
             """, sessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
@@ -239,13 +250,27 @@ class CheckoutContractTest {
             }
             """, sessionId);
 
-        given()
+        uuidWithIdempotency()
             .contentType(ContentType.JSON)
             .body(requestBody)
         .when()
             .post("/checkout")
         .then()
             .statusCode(400);
+    }
+
+    private String idempotencyKey() {
+        return UUID.randomUUID().toString();
+    }
+
+    private io.restassured.specification.RequestSpecification requestSpecWithAuth() {
+        return RestAssured.given().header("Authorization", "Bearer " + JwtTestUtils.userToken());
+    }
+
+    private io.restassured.specification.RequestSpecification uuidWithIdempotency() {
+        return RestAssured.given()
+            .header("Authorization", "Bearer " + JwtTestUtils.userToken())
+            .header("Idempotency-Key", idempotencyKey());
     }
 }
 

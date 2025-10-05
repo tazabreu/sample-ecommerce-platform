@@ -4,6 +4,7 @@ import com.ecommerce.customer.dto.CreateCategoryRequest;
 import com.ecommerce.customer.dto.CreateProductRequest;
 import com.ecommerce.customer.dto.UpdateCategoryRequest;
 import com.ecommerce.customer.dto.UpdateProductRequest;
+import com.ecommerce.customer.exception.DuplicateResourceException;
 import com.ecommerce.customer.exception.ResourceNotFoundException;
 import com.ecommerce.customer.mapper.CategoryMapper;
 import com.ecommerce.customer.mapper.ProductMapper;
@@ -141,7 +142,7 @@ public class CatalogService {
      * @param request the create request
      * @return the created product
      * @throws ResourceNotFoundException if category not found
-     * @throws IllegalArgumentException if SKU already exists
+     * @throws DuplicateResourceException if SKU already exists
      */
     public Product createProduct(CreateProductRequest request) {
         logger.info("Creating product with SKU: {}", request.sku());
@@ -151,7 +152,7 @@ public class CatalogService {
         
         // Check SKU uniqueness
         if (productRepository.existsBySku(request.sku())) {
-            throw new IllegalArgumentException("Product with SKU already exists: " + request.sku());
+            throw new DuplicateResourceException("Product", "SKU", request.sku());
         }
         
         Product product = productMapper.toEntity(request);

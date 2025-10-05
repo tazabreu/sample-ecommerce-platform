@@ -5,7 +5,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -37,7 +39,10 @@ import java.util.UUID;
     @Index(name = "idx_cart_session", columnList = "session_id", unique = true),
     @Index(name = "idx_cart_expires", columnList = "expires_at")
 })
-public class Cart {
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class Cart implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -51,7 +56,7 @@ public class Cart {
     @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<CartItem> items = new ArrayList<>();
 
     @CreationTimestamp
@@ -253,6 +258,12 @@ public class Cart {
         return items.stream()
             .mapToInt(CartItem::getQuantity)
             .sum();
+    }
+
+    public void initializeItems() {
+        if (items == null) {
+            items = new ArrayList<>();
+        }
     }
 
     // Object methods

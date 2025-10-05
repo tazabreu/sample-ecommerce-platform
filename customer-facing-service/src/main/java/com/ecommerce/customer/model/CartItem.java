@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,7 +37,7 @@ import java.util.UUID;
  * </ul>
  */
 @Entity
-@Table(name = "cart_items", 
+@Table(name = "cart_items",
     indexes = {
         @Index(name = "idx_cartitem_cart", columnList = "cart_id"),
         @Index(name = "idx_cartitem_product", columnList = "product_id")
@@ -45,7 +46,10 @@ import java.util.UUID;
         @UniqueConstraint(name = "uk_cart_product", columnNames = {"cart_id", "product_id"})
     }
 )
-public class CartItem {
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class CartItem implements java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -54,6 +58,7 @@ public class CartItem {
     @NotNull(message = "Cart is required")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "cart_id", nullable = false, foreignKey = @ForeignKey(name = "fk_cartitem_cart"))
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Cart cart;
 
     @NotNull(message = "Product is required")

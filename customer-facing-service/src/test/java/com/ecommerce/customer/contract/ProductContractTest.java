@@ -1,14 +1,17 @@
 package com.ecommerce.customer.contract;
 
+import com.ecommerce.customer.config.EmbeddedRedisConfig;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import static io.restassured.RestAssured.given;
+import com.ecommerce.customer.testsupport.JwtTestUtils;
 import static org.hamcrest.Matchers.*;
 
 /**
@@ -18,6 +21,7 @@ import static org.hamcrest.Matchers.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@Import(EmbeddedRedisConfig.class)
 class ProductContractTest {
 
     @LocalServerPort
@@ -30,15 +34,16 @@ class ProductContractTest {
         RestAssured.port = port;
         RestAssured.basePath = "/api/v1";
 
-        // Create a test category for products
+        // Create a test category for products with unique name
+        String uniqueName = "Test Category " + System.currentTimeMillis();
         categoryId = given()
             .contentType(ContentType.JSON)
-            .body("""
+            .body(String.format("""
                 {
-                  "name": "Test Category",
+                  "name": "%s",
                   "description": "Category for testing products"
                 }
-                """)
+                """, uniqueName))
             .post("/categories")
             .then()
             .statusCode(201)
@@ -92,8 +97,11 @@ class ProductContractTest {
             }
             """, categoryId);
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/products")
@@ -140,8 +148,11 @@ class ProductContractTest {
             }
             """, categoryId);
 
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
         .when()
             .post("/products")
@@ -162,8 +173,11 @@ class ProductContractTest {
             """, categoryId);
 
         // Create first product
+        String token = JwtTestUtils.managerToken();
+
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(requestBody)
             .post("/products")
             .then()
@@ -182,6 +196,7 @@ class ProductContractTest {
 
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(duplicateBody)
         .when()
             .post("/products")
@@ -192,8 +207,11 @@ class ProductContractTest {
     @Test
     void getProductById_withValidId_shouldReturn200() {
         // First create a product
+        String token = JwtTestUtils.managerToken();
+
         String productId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(String.format("""
                 {
                   "sku": "SKU-GET-TEST",
@@ -225,8 +243,11 @@ class ProductContractTest {
     @Test
     void updateProduct_withValidData_shouldReturn200() {
         // First create a product
+        String token = JwtTestUtils.managerToken();
+
         String productId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(String.format("""
                 {
                   "sku": "SKU-UPDATE-TEST",
@@ -253,6 +274,7 @@ class ProductContractTest {
 
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(updateBody)
         .when()
             .put("/products/" + productId)
@@ -268,8 +290,11 @@ class ProductContractTest {
     @Test
     void deleteProduct_withValidId_shouldReturn204() {
         // First create a product
+        String token = JwtTestUtils.managerToken();
+
         String productId = given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
             .body(String.format("""
                 {
                   "sku": "SKU-DELETE-TEST",
@@ -288,6 +313,7 @@ class ProductContractTest {
         // Then delete it (soft delete via isActive=false)
         given()
             .contentType(ContentType.JSON)
+            .header("Authorization", "Bearer " + token)
         .when()
             .delete("/products/" + productId)
         .then()

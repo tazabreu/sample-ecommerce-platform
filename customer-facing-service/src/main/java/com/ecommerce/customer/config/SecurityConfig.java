@@ -2,14 +2,16 @@ package com.ecommerce.customer.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
@@ -25,24 +27,38 @@ import java.nio.charset.StandardCharsets;
  * 
  * <p>Security Model:</p>
  * <ul>
- *   <li>Public endpoints: GET /api/v1/products, /api/v1/categories, /api/v1/carts/**, POST /api/v1/checkout, /actuator/health</li>
- *   <li>Manager endpoints: POST/PUT/DELETE /api/v1/products, /api/v1/categories (require ROLE_MANAGER)</li>
+ *   <li>Public endpoints: GET /api/v1/products/**, GET /api/v1/categories/**, /api/v1/carts/**, POST /api/v1/checkout</li>
+ *   <li>Manager endpoints: POST/PUT/DELETE /api/v1/products/**, /api/v1/categories/** (require ROLE_MANAGER)</li>
  *   <li>JWT-based authentication (OAuth2 Resource Server)</li>
  *   <li>Stateless sessions (no server-side session storage)</li>
+ *   <li>CSRF disabled (stateless API)</li>
  * </ul>
  * 
- * <p>For local development (dev profile), mock authentication is available at /api/v1/auth/login</p>
+ * <p>Profiles:</p>
+ * <ul>
+ *   <li>test: Permissive security for integration tests</li>
+ *   <li>dev: JWT enabled but can be disabled via property</li>
+ *   <li>stg/prod: Full JWT security enforcement</li>
+ * </ul>
  */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
     @Value("${jwt.secret:demo-secret-key-for-local-development-only-do-not-use-in-production}")
     private String jwtSecret;
 
+    @Value("${jwt.issuer:ecommerce-platform-dev}")
+    private String jwtIssuer;
+
+    @Value("${app.security.jwt.enabled:true}")
+    private boolean jwtEnabled;
+
+    // Removed permissive test SecurityFilterChain; tests should run with security enabled
+
     /**
-     * Configure HTTP security with public and protected endpoints.
+     * Production security configuration with JWT authentication.
+     * Active in dev, stg, prod profiles.
      *
      * @param http the HttpSecurity to configure
      * @return the configured SecurityFilterChain
@@ -51,45 +67,57 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable) // Stateless API, CSRF not needed
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            );
+
+        if (!jwtEnabled) {
+            // Dev mode with JWT disabled - permit all
+            http.authorizeHttpRequests(auth -> auth
+                .anyRequest().permitAll()
+            );
+        } else {
+            // Production mode with JWT enforcement
+            http
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints - catalog browsing
-                        .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
-                        
-                        // Public endpoints - shopping cart (guest checkout)
-                        .requestMatchers("/api/v1/carts/**").permitAll()
-                        
-                        // Public endpoints - checkout (guest checkout)
-                        .requestMatchers(HttpMethod.POST, "/api/v1/checkout").permitAll()
-                        
-                        // Public endpoints - health checks
-                        .requestMatchers("/actuator/health/**").permitAll()
-                        .requestMatchers("/actuator/prometheus").permitAll()
-                        
-                        // Public endpoints - mock auth (dev profile only)
-                        .requestMatchers("/api/v1/auth/**").permitAll()
-                        
-                        // Manager endpoints - catalog management (handled by @PreAuthorize in controllers)
-                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").authenticated()
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").authenticated()
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").authenticated()
-                        
-                        // Default - require authentication
-                        .anyRequest().authenticated()
+                    // Public catalog endpoints
+                    .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+                    
+                    // Public cart and checkout endpoints
+                    .requestMatchers("/api/v1/carts/**").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/checkout").permitAll()
+                    
+                    // Public health and metrics
+                    .requestMatchers("/actuator/health/**").permitAll()
+                    .requestMatchers("/actuator/info").permitAll()
+                    .requestMatchers("/actuator/prometheus").permitAll()
+                    
+                    // Public auth endpoints (for dev mock auth)
+                    .requestMatchers("/api/v1/auth/**").permitAll()
+                    
+                    // Swagger/OpenAPI (dev only, should be disabled in prod via properties)
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                    
+                    // Manager-only catalog management endpoints
+                    .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("MANAGER")
+                    .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasRole("MANAGER")
+                    .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("MANAGER")
+                    .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasRole("MANAGER")
+                    .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasRole("MANAGER")
+                    .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasRole("MANAGER")
+                    
+                    // Default - require authentication
+                    .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt
-                                .decoder(jwtDecoder())
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter())
-                        )
+                    .jwt(jwt -> jwt
+                        .decoder(jwtDecoder())
+                        .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                    )
                 );
+        }
 
         return http.build();
     }
@@ -97,21 +125,38 @@ public class SecurityConfig {
     /**
      * JWT decoder for validating JWT tokens.
      * Uses HMAC-SHA256 (HS256) with shared secret.
+     * 
+     * <p>Development: Uses shared secret with issuer validation</p>
+     * <p>Production: Should use RSA public key or JWK Set URI from identity provider</p>
      *
-     * @return configured JWT decoder
+     * @return configured JWT decoder with issuer validation
      */
     @Bean
     public JwtDecoder jwtDecoder() {
-        // For production, use RSA public key or JWK Set URI
-        // For local dev, use shared secret (HS256)
         byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         SecretKey secretKey = new SecretKeySpec(secretBytes, "HmacSHA256");
-        return NimbusJwtDecoder.withSecretKey(secretKey).build();
+        
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey).build();
+        
+        // Add issuer validation for security
+        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(jwtIssuer);
+        decoder.setJwtValidator(withIssuer);
+        
+        return decoder;
     }
 
     /**
      * JWT authentication converter to extract roles from JWT claims.
      * Maps "roles" claim to Spring Security authorities with ROLE_ prefix.
+     * 
+     * <p>Example JWT payload:</p>
+     * <pre>
+     * {
+     *   "sub": "user@example.com",
+     *   "roles": ["MANAGER", "USER"],
+     *   "exp": 1234567890
+     * }
+     * </pre>
      *
      * @return configured JWT authentication converter
      */
@@ -126,23 +171,4 @@ public class SecurityConfig {
 
         return jwtAuthenticationConverter;
     }
-
-    /**
-     * Permissive security configuration for local development.
-     * Only active in dev profile - allows all requests without authentication.
-     *
-     * @param http the HttpSecurity to configure
-     * @return the configured SecurityFilterChain
-     * @throws Exception if configuration fails
-     */
-    @Bean
-    @Profile("dev-insecure")
-    public SecurityFilterChain devFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
-
-        return http.build();
-    }
 }
-

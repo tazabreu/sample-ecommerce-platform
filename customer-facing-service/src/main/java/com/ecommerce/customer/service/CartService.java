@@ -10,6 +10,8 @@ import com.ecommerce.customer.repository.ProductRepository;
 import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,18 +46,43 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final RedisTemplate<String, Cart> cartRedisTemplate;
+    private final boolean redisAvailable;
     private final Counter cartItemsAddedCounter;
 
     public CartService(
             CartRepository cartRepository,
             ProductRepository productRepository,
-            RedisTemplate<String, Cart> cartRedisTemplate,
-            Counter cartItemsAddedCounter
+            ObjectProvider<RedisTemplate<String, Cart>> cartRedisTemplateProvider,
+            @Qualifier("cartItemsAddedCounter") Counter cartItemsAddedCounter
     ) {
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
-        this.cartRedisTemplate = cartRedisTemplate;
+        this.cartRedisTemplate = cartRedisTemplateProvider.getIfAvailable();
         this.cartItemsAddedCounter = cartItemsAddedCounter;
+        this.redisAvailable = this.cartRedisTemplate != null;
+    }
+
+    /**
+     * Check if a cart exists for the given session ID.
+     * Checks both Redis and PostgreSQL without creating a new cart.
+     *
+     * @param sessionId the session identifier
+     * @return true if cart exists, false otherwise
+     */
+    @Transactional(readOnly = true)
+    public boolean cartExists(String sessionId) {
+        logger.debug("Checking if cart exists for session: {}", sessionId);
+
+        if (redisAvailable) {
+            String redisKey = getRedisKey(sessionId);
+            Cart cart = cartRedisTemplate.opsForValue().get(redisKey);
+            if (cart != null) {
+                return true;
+            }
+        }
+
+        // Check PostgreSQL
+        return cartRepository.existsBySessionId(sessionId);
     }
 
     /**
@@ -70,21 +97,27 @@ public class CartService {
     public Cart getCart(String sessionId) {
         logger.debug("Getting cart for session: {}", sessionId);
 
-        // Try Redis first
-        String redisKey = getRedisKey(sessionId);
-        Cart cart = cartRedisTemplate.opsForValue().get(redisKey);
+        Cart cart = null;
 
-        if (cart != null) {
-            logger.debug("Cart found in Redis for session: {}", sessionId);
-            return cart;
+        if (redisAvailable) {
+            String redisKey = getRedisKey(sessionId);
+            cart = cartRedisTemplate.opsForValue().get(redisKey);
+
+            if (cart != null) {
+                logger.debug("Cart found in Redis for session: {}", sessionId);
+                // Restore bidirectional relationships after deserialization
+                restoreCartRelationships(cart);
+                return cart;
+            }
         }
 
         // Fall back to PostgreSQL
-        cart = cartRepository.findBySessionId(sessionId).orElse(null);
+        cart = cartRepository.findWithItemsBySessionId(sessionId).orElse(null);
 
         if (cart != null && !cart.isExpired()) {
             logger.debug("Cart found in PostgreSQL for session: {}", sessionId);
-            // Restore to Redis
+            cart.initializeItems();
+            // Cache in Redis for future requests
             saveToRedis(cart);
             return cart;
         }
@@ -269,8 +302,10 @@ public class CartService {
         logger.info("Deleting cart for session: {}", sessionId);
 
         // Delete from Redis
-        String redisKey = getRedisKey(sessionId);
-        cartRedisTemplate.delete(redisKey);
+        if (redisAvailable) {
+            String redisKey = getRedisKey(sessionId);
+            cartRedisTemplate.delete(redisKey);
+        }
 
         // Delete from PostgreSQL
         cartRepository.findBySessionId(sessionId)
@@ -285,13 +320,32 @@ public class CartService {
      * @param cart the cart to save
      */
     private void saveToRedis(Cart cart) {
+        if (!redisAvailable) {
+            return;
+        }
+
+        // Initialize lazy collections before serialization
+        cart.initializeItems();
+
         String redisKey = getRedisKey(cart.getSessionId());
         cartRedisTemplate.opsForValue().set(
-                redisKey, 
-                cart, 
+                redisKey,
+                cart,
                 Duration.ofMinutes(CART_TTL_MINUTES)
         );
         logger.debug("Saved cart to Redis: {}", redisKey);
+    }
+
+    /**
+     * Restore bidirectional relationships after deserializing from Redis.
+     * Since Cart.cart field is @JsonIgnore, it needs to be restored manually.
+     *
+     * @param cart the cart loaded from Redis
+     */
+    private void restoreCartRelationships(Cart cart) {
+        if (cart != null && cart.getItems() != null) {
+            cart.getItems().forEach(item -> item.setCart(cart));
+        }
     }
 
     /**

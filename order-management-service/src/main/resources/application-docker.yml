@@ -1,0 +1,24 @@
+# Docker profile configuration
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-order:5432/order_db}
+    username: ${SPRING_DATASOURCE_USERNAME:order_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:dev_password_order}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:redpanda:9092}
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce.order: INFO
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.springframework.kafka: INFO

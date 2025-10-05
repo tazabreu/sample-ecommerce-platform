@@ -302,77 +302,139 @@ Tasks are ordered by dependencies following TDD principles:
 
 ---
 
-## Phase 3.9: Integration Tests (Priority 9)
+## Phase 3.9: Data Access Modernization (Priority 9)
 
-**Dependencies**: All implementation (T021-T053) complete, contract tests now passing
+**Dependencies**: Security configuration (T051-T053) complete
 
-- [ ] **T054** [P] Integration test for complete checkout flow  
-  **Files**: `customer-facing-service/src/test/java/com/ecommerce/customer/integration/CheckoutFlowIntegrationTest.java`  
+**Purpose**: Migrate from Spring Data JPA to Spring Data JDBC for improved performance, transparency, and reduced complexity
+
+**Migration Guide**: Refer to `MIGRATION_JPA_JDBC.md` for comprehensive 53-task migration plan with checkpoints, decision points, and code examples. See `MIGRATION_JPA_JDBC_CORRECTIONS.md` for validation against official Spring Data documentation
+
+- [ ] **T054** Migrate customer-facing service from JPA to Spring Data JDBC
+  **Files**: All entity classes in `customer-facing-service/src/main/java/com/ecommerce/customer/model/`, all repositories in `customer-facing-service/src/main/java/com/ecommerce/customer/repository/`, `pom.xml`, service layer, tests
+  **Scope**: 7 entities (Category, Product, Cart, CartItem, OrderCreatedOutbox, CheckoutIdempotency, OrderNumberSequence)
+  **Strategy**: 
+  - Phase 1: Test preparation (update tests to fail-first, remove JPA-specific patterns)
+  - Phase 2: Entity transformation (replace JPA annotations with JDBC, convert relationships to aggregates)
+  - Phase 3: Repository updates (CrudRepository, SQL queries, remove @EntityGraph)
+  - Phase 4: Service adjustments (explicit save calls, UUID generation, no lazy loading)
+  - Phase 5: Configuration (JdbcConfig, remove Jackson Hibernate module, audit callbacks)
+  - Phase 6: Test fixes (all tests passing with JDBC)
+  **Key Changes**:
+  - Cart → CartItem: Aggregate root with `@MappedCollection(idColumn = "cart_id")`
+  - Product: Replace `@ManyToOne Category` with `UUID categoryId`
+  - CartItem: Remove back-reference to Cart, store `UUID productId` instead of Product entity
+  - Repositories: Replace JPQL with SQL, replace `@Lock(PESSIMISTIC_WRITE)` with `SELECT ... FOR UPDATE`
+  - Services: Explicit `save()` after mutations, manual UUID generation, no lazy loading assumptions
+  - Redis: Remove Hibernate5JakartaModule from Jackson configuration
+  **Checkpoints**: See MIGRATION_JPA_JDBC.md M001-M038 for detailed steps and human review points
+  **Acceptance Criteria**: All tests pass, no JPA dependencies in `mvn dependency:tree`, contract tests passing
+
+- [ ] **T055** Migrate order-management service from JPA to Spring Data JDBC
+  **Files**: All entity classes in `order-management-service/src/main/java/com/ecommerce/order/model/`, all repositories in `order-management-service/src/main/java/com/ecommerce/order/repository/`, `pom.xml`, service layer, tests
+  **Scope**: 4 entities (Order, OrderItem, PaymentTransaction, ProcessedEvent)
+  **Strategy**: Same phases as T054 (see MIGRATION_JPA_JDBC.md)
+  **Key Changes**:
+  - Order → OrderItem: Aggregate root with `@MappedCollection(idColumn = "order_id")`
+  - Order.shippingAddress: Custom JSONB converter for `Map<String, String>`
+  - PaymentTransaction: **DECISION POINT** - Separate aggregate (recommended) vs. embedded in Order
+  - OrderItem: Remove back-reference to Order, immutable after creation
+  - ProcessedEvent: Simple entity, minimal changes
+  - Repositories: Convert JPQL to SQL with explicit ENUM casting (`CAST(:status AS order_status)`)
+  - Services: Explicit save for Order + items, manual UUID generation for nested entities
+  **Special Considerations**:
+  - JSONB converters for Map serialization (shippingAddress)
+  - PostgreSQL ENUM types require explicit casting in SQL queries
+  - Kafka event processing: Ensure idempotency checks work with JDBC transactions
+  - PaymentTransaction relationship: If separate aggregate, add `UUID orderId` field and fetch via repository
+  **Checkpoints**: See MIGRATION_JPA_JDBC.md for PaymentTransaction aggregate boundary decision (M018)
+  **Acceptance Criteria**: All tests pass, event processing works correctly, JSONB serialization functional
+
+- [ ] **T056** Performance validation: JPA vs JDBC comparison
+  **Files**: `customer-facing-service/src/test/java/com/ecommerce/customer/benchmark/DataAccessBenchmark.java`, `docs/jdbc-performance-analysis.md`
+  **Details**: 
+  - Create JMH benchmarks comparing: 1) Cart retrieval with items, 2) Checkout flow with inventory updates, 3) Bulk product queries
+  - Measure: Query count, memory footprint, latency (p50/p95/p99), throughput
+  - Enable SQL logging to capture query patterns: `logging.level.org.springframework.jdbc.core=DEBUG`
+  - Run EXPLAIN ANALYZE on critical queries to verify index usage
+  - Document results showing: query count comparison, memory footprint changes, latency comparison
+  - Include recommendations for optimal aggregate boundaries and potential optimizations (projections, caching)
+  - Load test with 100 concurrent users to validate behavior under realistic load
+  **Acceptance Criteria**: All benchmarks execute successfully, no N+1 query patterns detected, results documented for future reference
+
+---
+
+## Phase 3.10: Integration Tests (Priority 10)
+
+**Dependencies**: Data access migration (T054-T056) complete, contract tests now passing
+
+- [ ] **T057** [P] Integration test for complete checkout flow
+  **Files**: `customer-facing-service/src/test/java/com/ecommerce/customer/integration/CheckoutFlowIntegrationTest.java`
   **Details**: @SpringBootTest with @Testcontainers (PostgreSQL, Redis, Kafka). Scenario: Create category → create product → add to cart → checkout → verify OrderCreatedEvent published to Kafka → verify inventory decremented → verify cart cleared. Use @EmbeddedKafka and KafkaTestConsumer
 
-- [ ] **T055** [P] Integration test for order processing flow  
-  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/OrderProcessingIntegrationTest.java`  
+- [ ] **T058** [P] Integration test for order processing flow
+  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/OrderProcessingIntegrationTest.java`
   **Details**: @SpringBootTest with @Testcontainers (PostgreSQL, Kafka). Scenario: Publish OrderCreatedEvent → verify order created with status=PENDING → verify payment processing triggered → verify PaymentCompletedEvent published → verify order status=PAID → verify payment transaction updated
 
-- [ ] **T056** [P] Integration test for idempotency handling  
-  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/IdempotencyIntegrationTest.java`  
+- [ ] **T059** [P] Integration test for idempotency handling
+  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/IdempotencyIntegrationTest.java`
   **Details**: Publish same OrderCreatedEvent twice (duplicate eventId) → verify only one order created, second event logged and skipped
 
-- [ ] **T057** [P] Integration test for cart expiration  
-  **Files**: `customer-facing-service/src/test/java/com/ecommerce/customer/integration/CartExpirationIntegrationTest.java`  
+- [ ] **T060** [P] Integration test for cart expiration
+  **Files**: `customer-facing-service/src/test/java/com/ecommerce/customer/integration/CartExpirationIntegrationTest.java`
   **Details**: Create cart with short TTL in Redis → wait for expiration → verify cart not accessible → verify cleanup job removes from PostgreSQL
 
-- [ ] **T058** [P] Integration test for payment failure handling  
-  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/PaymentFailureIntegrationTest.java`  
+- [ ] **T061** [P] Integration test for payment failure handling
+  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/PaymentFailureIntegrationTest.java`
   **Details**: Configure MockPaymentService to fail → publish OrderCreatedEvent → verify order status=FAILED → verify PaymentCompletedEvent with status=FAILED and failureReason populated
 
-- [ ] **T059** [P] Integration test for circuit breaker behavior  
-  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/CircuitBreakerIntegrationTest.java`  
+- [ ] **T062** [P] Integration test for circuit breaker behavior
+  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/CircuitBreakerIntegrationTest.java`
   **Details**: Configure payment service to timeout → trigger 3 payment attempts → verify circuit breaker opens → verify health check reports circuit breaker OPEN → wait for timeout → verify circuit breaker transitions to HALF_OPEN
 
-- [ ] **T060** [P] Integration test for manager operations  
-  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/ManagerOperationsIntegrationTest.java`  
+- [ ] **T063** [P] Integration test for manager operations
+  **Files**: `order-management-service/src/test/java/com/ecommerce/order/integration/ManagerOperationsIntegrationTest.java`
   **Details**: Create paid order → test cancel order (validate status change to CANCELLED) → create another paid order → test fulfill order (validate status=FULFILLED, tracking info recorded)
 
 ---
 
-## Phase 3.10: Deployment & Infrastructure (Priority 10)
+## Phase 3.11: Deployment & Infrastructure (Priority 11)
 
-**Dependencies**: All integration tests (T054-T060) passing
+**Dependencies**: All integration tests (T057-T063) passing
 
-- [x] **T061** [P] Create optimized Dockerfiles for both services
+- [x] **T064** [P] Create optimized Dockerfiles for both services
   **Files**: `customer-facing-service/Dockerfile`, `order-management-service/Dockerfile`
   **Details**: Multi-stage build with Maven dependency caching, Spring Boot layer extraction, security hardening with non-root user, HEALTHCHECK, JVM tuning for containers
 
-- [ ] **T062** [P] Create environment variable template
+- [ ] **T065** [P] Create environment variable template
   **Files**: `.env.example`
   **Details**: Template for DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD, REDIS_URL, KAFKA_BOOTSTRAP_SERVERS, JWT_SECRET, JWT_ISSUER. Include comments for local vs cloud values. Maintain sync with actual environment variables used in application.yml
 
 ---
 
-## Phase 3.11: Observability & Monitoring (Priority 11)
+## Phase 3.12: Observability & Monitoring (Priority 12)
 
-**Dependencies**: Deployment infrastructure (T061-T065) complete
+**Dependencies**: Deployment infrastructure (T064-T065) complete
 
-- [ ] **T063** [P] Implement custom Micrometer metrics for customer-facing service
+- [ ] **T066** [P] Implement custom Micrometer metrics for customer-facing service
   **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/metrics/BusinessMetrics.java`
   **Details**: @Component with MeterRegistry. Custom counters: checkout_attempts_total, checkout_success_total, checkout_failure_total (tag: reason), cart_items_added_total, product_views_total. Custom gauges: active_carts_count
 
-- [ ] **T064** [P] Implement custom Micrometer metrics for order management service
+- [ ] **T067** [P] Implement custom Micrometer metrics for order management service
   **Files**: `order-management-service/src/main/java/com/ecommerce/order/metrics/BusinessMetrics.java`
   **Details**: Custom counters: orders_created_total, payments_success_total, payments_failed_total (tag: failureReason), orders_cancelled_total, orders_fulfilled_total. Custom timers: order_processing_duration_seconds (from OrderCreated event to status=PAID)
 
-- [ ] **T065** [P] Configure Prometheus scraping for both services
+- [ ] **T068** [P] Configure Prometheus scraping for both services
   **Files**: `infrastructure/prometheus/prometheus.yml`, `infrastructure/prometheus/alert-rules.yml`
   **Details**: Scrape config for /actuator/prometheus endpoints (customer:8080, order:8081). Alert rules: consumer_lag > 1000, payment_success_rate < 0.95, p95_latency > 500ms, service_down
 
-- [ ] **T066** [P] Setup Grafana dashboards
+- [ ] **T069** [P] Setup Grafana dashboards
   **Files**: `infrastructure/grafana/dashboards/ecommerce-overview.json`, `order-processing.json`
   **Details**: Overview dashboard: request rate, error rate, p95 latency, active carts, orders per minute. Order processing dashboard: order status distribution, payment success rate, consumer lag, circuit breaker state
 
 ---
 
-## Phase 3.12: Documentation & Polish (Priority 12)
+## Phase 3.13: Documentation & Polish (Priority 13)
 
 **Dependencies**: All implementation and tests complete
 
@@ -421,13 +483,17 @@ Controllers (T045-T050) [Contract tests now PASS]
   ↓
 Security (T051-T053)
   ↓
-Integration Tests (T054-T060)
+Data Access Modernization (T054-T056) [JPA → JDBC Migration]
   ↓
-Deployment (T061-T062)
+Integration Tests (T057-T063)
   ↓
-Observability (T063-T066)
+Deployment (T064-T065)
   ↓
-Documentation (T067-T071)
+Observability (T066-T069)
+  ↓
+Documentation (T070-T078)
+  ↓
+Reliability Hardening (T079-T086)
 ```
 
 **Critical Path Dependencies**:
@@ -437,7 +503,8 @@ Documentation (T067-T071)
 - T034-T041 (services) → T042-T044 (events need services)
 - T034-T041 (services) → T045-T049 (controllers need services)
 - T013-T020 (contract tests) validate T045-T049 (controllers)
-- T045-T049 (controllers) → T054-T060 (integration tests need full stack)
+- T045-T049 (controllers) → T054-T056 (JDBC migration)
+- T054-T056 (JDBC migration) → T057-T063 (integration tests need full stack)
 
 ---
 
@@ -489,13 +556,13 @@ Task T029: "Order service repositories"
 ### Integration Tests Phase (All Parallel - Different Test Files)
 ```bash
 # All independent integration tests
-Task T054: "Checkout flow integration test"
-Task T055: "Order processing integration test"
-Task T056: "Idempotency integration test"
-Task T057: "Cart expiration integration test"
-Task T058: "Payment failure integration test"
-Task T059: "Circuit breaker integration test"
-Task T060: "Manager operations integration test"
+Task T057: "Checkout flow integration test"
+Task T058: "Order processing integration test"
+Task T059: "Idempotency integration test"
+Task T060: "Cart expiration integration test"
+Task T061: "Payment failure integration test"
+Task T062: "Circuit breaker integration test"
+Task T063: "Manager operations integration test"
 ```
 
 ---
@@ -550,65 +617,67 @@ Task T060: "Manager operations integration test"
 
 ## Success Criteria
 
-**Phase 3.2 (Contract Tests)**: All contract tests written, all failing (expected - no implementation yet)  
-**Phase 3.7 (Controllers)**: All contract tests now passing, 100% API coverage  
-**Phase 3.9 (Integration)**: All integration tests passing, end-to-end flows validated  
-**Phase 3.10 (Deployment)**: Services deployable via `docker-compose up`, accessible via curl  
-**Phase 3.12 (Documentation)**: Quickstart validation script (T069) executes successfully, API docs synchronized
+**Phase 3.2 (Contract Tests)**: All contract tests written, all failing (expected - no implementation yet)
+**Phase 3.7 (Controllers)**: All contract tests now passing, 100% API coverage
+**Phase 3.9 (Data Access)**: JPA to JDBC migration complete, all tests passing with new data access layer
+**Phase 3.10 (Integration)**: All integration tests passing, end-to-end flows validated
+**Phase 3.11 (Deployment)**: Services deployable via `docker-compose up`, accessible via curl
+**Phase 3.13 (Documentation)**: Quickstart validation script (T072) executes successfully, API docs synchronized
 
 **Final Validation**:
-- [ ] All 71 tasks completed
+- [ ] All 91 tasks completed (T001-T086 + T087-T091)
 - [ ] Contract tests: 100% passing (20 test files)
 - [ ] Integration tests: 100% passing (7 test files)
 - [ ] Code coverage: >80% (services and controllers)
-- [ ] SonarQube: 0 bugs, 0 vulnerabilities (T070)
-- [ ] Quickstart script: Executes without errors (T069)
+- [ ] SonarQube: 0 bugs, 0 vulnerabilities (T073)
+- [ ] Quickstart script: Executes without errors (T072)
 - [ ] Health checks: All services UP (T011)
 - [ ] Metrics: Exposed at /actuator/prometheus (T010)
+- [ ] Data access: Spring Data JDBC migration complete (T054-T056)
 
 ---
 
-**Tasks Generation Complete**: 71 numbered, dependency-ordered, parallel-marked tasks ready for execution
-**Estimated Effort**: 280-380 developer-hours (assuming 4-5 hours per task average)
+**Tasks Generation Complete**: 91 numbered, dependency-ordered, parallel-marked tasks ready for execution
+**Estimated Effort**: 360-460 developer-hours (assuming 4-5 hours per task average)
 **Recommended Team Size**: 3-4 developers (pair on critical paths, parallelize independent tasks)
-**Timeline**: 6-8 weeks for full implementation with testing and documentation
+**Timeline**: 8-10 weeks for full implementation with testing, documentation, and JDBC migration
 
 ---
 
-## Phase 3.13: Reliability & Operational Hardening (Priority 13)
+## Phase 3.14: Reliability & Operational Hardening (Priority 14)
 
-Dependencies: All core features implemented (T001–T075)
+Dependencies: All core features implemented (T001–T078)
 
-- [ ] **T076** Implement transactional outbox for OrderCreated in customer service  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/outbox/`, migrations `customer-facing-service/src/main/resources/db/migration/V6__create_outbox_table.sql`  
+- [ ] **T079** Implement transactional outbox for OrderCreated in customer service
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/outbox/`, migrations `customer-facing-service/src/main/resources/db/migration/V6__create_outbox_table.sql`
   **Details**: Persist outbox record within checkout DB transaction; background publisher relays to Kafka with exactly-once semantics (de-dup by eventId)
 
-- [ ] **T077** Standardize error handling to RFC 7807 Problem Details  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/exception/GlobalExceptionHandler.java`, `order-management-service/src/main/java/com/ecommerce/order/exception/GlobalExceptionHandler.java`  
+- [ ] **T080** Standardize error handling to RFC 7807 Problem Details
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/exception/GlobalExceptionHandler.java`, `order-management-service/src/main/java/com/ecommerce/order/exception/GlobalExceptionHandler.java`
   **Details**: Return `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`; update tests where needed
 
-- [ ] **T078** Add idempotent checkout using Idempotency-Key  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/controller/CheckoutController.java`, idempotency repository, migration `customer-facing-service/src/main/resources/db/migration/V7__create_idempotency_table.sql`  
+- [ ] **T081** Add idempotent checkout using Idempotency-Key
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/controller/CheckoutController.java`, idempotency repository, migration `customer-facing-service/src/main/resources/db/migration/V7__create_idempotency_table.sql`
   **Details**: Store key → response hash for 24h; return cached response on replay; guard inventory updates
 
-- [ ] **T079** Replace in-memory order number with DB-backed daily sequence  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/service/CheckoutService.java`, migration `customer-facing-service/src/main/resources/db/migration/V8__create_order_number_sequence.sql`  
+- [ ] **T082** Replace in-memory order number with DB-backed daily sequence
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/service/CheckoutService.java`, migration `customer-facing-service/src/main/resources/db/migration/V8__create_order_number_sequence.sql`
   **Details**: Generate `ORD-YYYYMMDD-###` from sequence; ensure unique index; concurrent-safe
 
-- [ ] **T080** Add Kafka DLT and retry/backoff policies  
-  **Files**: `infrastructure/kafka/create-topics.sh`, consumer configs in both services  
+- [ ] **T083** Add Kafka DLT and retry/backoff policies
+  **Files**: `infrastructure/kafka/create-topics.sh`, consumer configs in both services
   **Details**: Create `*.DLT` topics; configure seek-to-current with backoff; route to DLT after max attempts; add metrics
 
-- [ ] **T081** Correlation ID propagation and header standards  
-  **Files**: HTTP filter in both services, Kafka header mappers  
+- [ ] **T084** Correlation ID propagation and header standards
+  **Files**: HTTP filter in both services, Kafka header mappers
   **Details**: Use `X-Correlation-ID`; enforce generation and propagation to logs/events; document in AGENTS.md
 
-- [ ] **T082** Optional Redis profile and in-memory cart adapter  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/config/RedisConfig.java`, new in-memory adapter  
+- [ ] **T085** Optional Redis profile and in-memory cart adapter
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/config/RedisConfig.java`, new in-memory adapter
   **Details**: Enable `cart.storage=in-memory|redis`; default to in-memory for tests
 
-- [ ] **T083** Operational runbooks for DLQ replay and idempotency cleanup  
-  **Files**: `docs/runbook.md` (extend)  
+- [ ] **T086** Operational runbooks for DLQ replay and idempotency cleanup
+  **Files**: `docs/runbook.md` (extend)
   **Details**: Add procedures, commands, metrics to monitor
 
 
@@ -616,28 +685,28 @@ Dependencies: All core features implemented (T001–T075)
 
 These items address active drift from the specification and must precede new feature work. Coordinate across agents to honor TDD (write failing tests, implement, then update docs/tasks).
 
-- [ ] **T084** Harden checkout with persisted Idempotency-Key workflow  
-  **Context**: FR-043 requires 24h deduplication for POST /checkout, but current controller/service paths execute side effects on every request.  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/controller/CheckoutController.java`, `.../service/CheckoutService.java`, new idempotency component under `customer-facing-service/src/main/java/com/ecommerce/customer/idempotency/`, migration `customer-facing-service/src/main/resources/db/migration/V9__checkout_idempotency.sql`, contract/integration tests under `customer-facing-service/src/test/java/com/ecommerce/customer/`.  
+- [ ] **T087** Harden checkout with persisted Idempotency-Key workflow
+  **Context**: FR-043 requires 24h deduplication for POST /checkout, but current controller/service paths execute side effects on every request.
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/controller/CheckoutController.java`, `.../service/CheckoutService.java`, new idempotency component under `customer-facing-service/src/main/java/com/ecommerce/customer/idempotency/`, migration `customer-facing-service/src/main/resources/db/migration/V9__checkout_idempotency.sql`, contract/integration tests under `customer-facing-service/src/test/java/com/ecommerce/customer/`.
   **Guidelines**: Enforce `Idempotency-Key` header (400 if missing), persist key → request fingerprint → serialized response with TTL, short-circuit on replays before mutating inventory/event state, and backfill failing-first tests. Ensure cached responses include correlation IDs and align with Problem Details on validation errors.
 
-- [ ] **T085** Implement transactional outbox publishing for OrderCreated events  
-  **Context**: Checkout currently blocks on synchronous Kafka sends (`CompletableFuture.join()`), breaching the transactional outbox requirement (spec §Technical Conventions, FR-041).  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/service/CheckoutService.java`, new outbox entities/repositories/schedulers under `customer-facing-service/src/main/java/com/ecommerce/customer/outbox/`, migration `customer-facing-service/src/main/resources/db/migration/V10__order_created_outbox.sql`, resiliency tests + runbooks.  
+- [ ] **T088** Implement transactional outbox publishing for OrderCreated events
+  **Context**: Checkout currently blocks on synchronous Kafka sends (`CompletableFuture.join()`), breaching the transactional outbox requirement (spec §Technical Conventions, FR-041).
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/service/CheckoutService.java`, new outbox entities/repositories/schedulers under `customer-facing-service/src/main/java/com/ecommerce/customer/outbox/`, migration `customer-facing-service/src/main/resources/db/migration/V10__order_created_outbox.sql`, resiliency tests + runbooks.
   **Guidelines**: Persist order/cart state and outbox row in the same transaction; background publisher streams pending rows, emits to Kafka with idempotent eventId handling, and marks records as sent (or moves to DLQ). Remove synchronous publish, add Testcontainers coverage simulating publish failures and restarts.
 
-- [ ] **T086** Standardize API errors on RFC 7807 Problem Details  
-  **Context**: Both services emit bespoke error DTOs, conflicting with Operating Principle #5.  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/exception/GlobalExceptionHandler.java`, `order-management-service/src/main/java/com/ecommerce/order/exception/GlobalExceptionHandler.java`, shared helpers in `shared-lib/`, API docs/tests.  
+- [ ] **T089** Standardize API errors on RFC 7807 Problem Details
+  **Context**: Both services emit bespoke error DTOs, conflicting with Operating Principle #5.
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/exception/GlobalExceptionHandler.java`, `order-management-service/src/main/java/com/ecommerce/order/exception/GlobalExceptionHandler.java`, shared helpers in `shared-lib/`, API docs/tests.
   **Guidelines**: Adopt Spring `ProblemDetail`, emit `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`; attach `correlationId` via extensions; update OpenAPI contracts and regression tests to expect the new schema.
 
-- [ ] **T087** Switch logging to structured JSON with correlation propagation  
-  **Context**: `application.yml` log patterns remain plaintext, violating the structured logging convention.  
-  **Files**: `customer-facing-service/src/main/resources/application.yml`, `order-management-service/src/main/resources/application.yml`, logging configs, infrastructure notes.  
+- [ ] **T090** Switch logging to structured JSON with correlation propagation
+  **Context**: `application.yml` log patterns remain plaintext, violating the structured logging convention.
+  **Files**: `customer-facing-service/src/main/resources/application.yml`, `order-management-service/src/main/resources/application.yml`, logging configs, infrastructure notes.
   **Guidelines**: Configure Logback JSON appenders (e.g., logstash encoder) capturing timestamp, level, logger, correlationId, request metadata, and business tags. Validate via integration test or smoke script that log lines are valid JSON and include headers.
 
-- [ ] **T088** Backfill RED/business metrics instrumentation  
-  **Context**: MetricsConfig only sets common tags; spec calls for counters/gauges (checkout_success_total, orders_created_total, etc.).  
-  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/config/MetricsConfig.java`, `order-management-service/src/main/java/com/ecommerce/order/config/MetricsConfig.java`, services emitting metrics, tests hitting `/actuator/prometheus`.  
+- [ ] **T091** Backfill RED/business metrics instrumentation
+  **Context**: MetricsConfig only sets common tags; spec calls for counters/gauges (checkout_success_total, orders_created_total, etc.).
+  **Files**: `customer-facing-service/src/main/java/com/ecommerce/customer/config/MetricsConfig.java`, `order-management-service/src/main/java/com/ecommerce/order/config/MetricsConfig.java`, services emitting metrics, tests hitting `/actuator/prometheus`.
   **Guidelines**: Instrument critical paths with Micrometer counters for attempts/success/failure (tagged by reason), gauges for active carts and in-flight orders, and timers for checkout/order processing duration. Add assertions ensuring metrics surface via actuator endpoints.
 

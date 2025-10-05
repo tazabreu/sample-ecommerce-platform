@@ -1,14 +1,18 @@
-version: '3.8'
+# Complete E-Commerce Platform
+# Includes infrastructure (databases, cache, messaging) + application services
+# Use this for full local development environment
 
 services:
+  # ===== INFRASTRUCTURE =====
+
   # PostgreSQL Database (Customer Service)
   postgres-customer:
     image: postgres:15-alpine
-    container_name: postgres-customer
+    container_name: ecommerce-infrastructure-postgres-customer
     environment:
       POSTGRES_DB: customer_db
       POSTGRES_USER: customer_user
-      POSTGRES_PASSWORD: customer_pass
+      POSTGRES_PASSWORD: dev_password_customer
     ports:
       - "5432:5432"
     volumes:
@@ -24,11 +28,11 @@ services:
   # PostgreSQL Database (Order Service)
   postgres-order:
     image: postgres:15-alpine
-    container_name: postgres-order
+    container_name: ecommerce-infrastructure-postgres-order
     environment:
       POSTGRES_DB: order_db
       POSTGRES_USER: order_user
-      POSTGRES_PASSWORD: order_pass
+      POSTGRES_PASSWORD: dev_password_order
     ports:
       - "5433:5432"
     volumes:
@@ -44,7 +48,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: ecommerce-infrastructure-redis
     ports:
       - "6379:6379"
     volumes:
@@ -61,7 +65,7 @@ services:
   # Redpanda (Kafka-compatible)
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
-    container_name: redpanda
+    container_name: ecommerce-infrastructure-redpanda
     command:
       - redpanda
       - start
@@ -102,47 +106,34 @@ services:
     networks:
       - ecommerce-network
 
-  # Create Kafka Topics
-  kafka-setup:
-    image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
-    container_name: kafka-setup
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    entrypoint: /bin/sh
-    command: >
-      -c "
-      echo 'Waiting for Redpanda to be ready...';
-      sleep 10;
-      echo 'Creating Kafka topics...';
-      rpk topic create orders.created --brokers redpanda:29092 --partitions 3 --replicas 1 || true;
-      rpk topic create payments.completed --brokers redpanda:29092 --partitions 3 --replicas 1 || true;
-      echo 'Topics created successfully';
-      rpk topic list --brokers redpanda:29092;
-      "
-    networks:
-      - ecommerce-network
+  # ===== APPLICATION SERVICES =====
 
-  # Customer Facing Service
-  customer-service:
+  # Customer-Facing Service
+  customer-facing-service:
     build:
-      context: ..
+      context: .
       dockerfile: customer-facing-service/Dockerfile
-    container_name: customer-service
-    environment:
-      - SPRING_PROFILES_ACTIVE=dev
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-customer:5432/customer_db
-      - SPRING_DATASOURCE_USERNAME=customer_user
-      - SPRING_DATASOURCE_PASSWORD=customer_pass
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_DATA_REDIS_PORT=6379
-      - SPRING_DATA_REDIS_PASSWORD=dev_redis_password
-      - SPRING_REDIS_HOST=redis
-      - SPRING_REDIS_PORT=6379
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
-      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+    container_name: ecommerce-services-customer-facing
     ports:
       - "8080:8080"
+    environment:
+      # Database Configuration
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-customer:5432/customer_db
+      - SPRING_DATASOURCE_USERNAME=customer_user
+      - SPRING_DATASOURCE_PASSWORD=dev_password_customer
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=dev_redis_password
+      # Kafka Configuration
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      # JWT Configuration (Mock for development)
+      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+      - JWT_ISSUER=ecommerce-platform-dev
+      # Spring Profile
+      - SPRING_PROFILES_ACTIVE=dev,docker
+      # Environment
+      - ENVIRONMENT=docker
     depends_on:
       postgres-customer:
         condition: service_healthy
@@ -150,47 +141,52 @@ services:
         condition: service_healthy
       redpanda:
         condition: service_healthy
-      kafka-setup:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 60s
     networks:
       - ecommerce-network
+    restart: unless-stopped
 
-  # Order Management Service
-  order-service:
+  # Order-Management Service
+  order-management-service:
     build:
-      context: ..
+      context: .
       dockerfile: order-management-service/Dockerfile
-    container_name: order-service
-    environment:
-      - SPRING_PROFILES_ACTIVE=dev
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-order:5432/order_db
-      - SPRING_DATASOURCE_USERNAME=order_user
-      - SPRING_DATASOURCE_PASSWORD=order_pass
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
-      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+    container_name: ecommerce-services-order-management
     ports:
       - "8081:8081"
+    environment:
+      # Database Configuration
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-order:5432/order_db
+      - SPRING_DATASOURCE_USERNAME=order_user
+      - SPRING_DATASOURCE_PASSWORD=dev_password_order
+      # Kafka Configuration
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      # JWT Configuration (Mock for development)
+      - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
+      - JWT_ISSUER=ecommerce-platform-dev
+      # Spring Profile
+      - SPRING_PROFILES_ACTIVE=docker
+      # Environment
+      - ENVIRONMENT=docker
     depends_on:
       postgres-order:
         condition: service_healthy
       redpanda:
         condition: service_healthy
-      kafka-setup:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 60s
     networks:
       - ecommerce-network
+    restart: unless-stopped
 
 volumes:
   postgres-customer-data:
@@ -205,3 +201,4 @@ volumes:
 networks:
   ecommerce-network:
     driver: bridge
+    name: ecommerce-network

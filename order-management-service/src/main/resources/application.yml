@@ -1,6 +1,8 @@
 spring:
   application:
     name: order-management-service
+  profiles:
+    default: dev
 
   # Enable Virtual Threads (Project Loom)
   threads:
@@ -73,14 +75,6 @@ server:
     listener:
       ack-mode: manual
       concurrency: 3
-  
-  # Security Configuration
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080}
-          jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8080/.well-known/jwks.json}
 
 # Actuator Configuration
 management:

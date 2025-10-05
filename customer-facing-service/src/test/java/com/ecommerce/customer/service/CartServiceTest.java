@@ -7,14 +7,15 @@ import com.ecommerce.customer.model.CartItem;
 import com.ecommerce.customer.model.Product;
 import com.ecommerce.customer.repository.CartRepository;
 import com.ecommerce.customer.repository.ProductRepository;
+import io.micrometer.core.instrument.Counter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.annotation.DirtiesContext;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -28,25 +29,30 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for CartService.
- * Tests business logic in isolation using mocks for dependencies.
+ * Integration tests for CartService.
+ * Tests business logic with real Spring context.
  */
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
+@DirtiesContext
 class CartServiceTest {
 
-    @Mock
+    @MockBean
     private CartRepository cartRepository;
 
-    @Mock
+    @MockBean
     private ProductRepository productRepository;
 
-    @Mock
+    @MockBean
     private RedisTemplate<String, Cart> cartRedisTemplate;
 
-    @Mock
+    @MockBean
     private ValueOperations<String, Cart> valueOperations;
 
-    @InjectMocks
+    @MockBean(name = "cartItemsAddedCounter")
+    private Counter cartItemsAddedCounter;
+
+    @Autowired
     private CartService cartService;
 
     private UUID productId;
@@ -81,7 +87,7 @@ class CartServiceTest {
 
         // Then
         assertThat(result).isEqualTo(cart);
-        verify(cartRepository, never()).findBySessionId(any());
+        verify(cartRepository, never()).findWithItemsBySessionId(any());
     }
 
     @Test
@@ -94,7 +100,7 @@ class CartServiceTest {
         when(cart.isExpired()).thenReturn(false);
 
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
+        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(cart));
 
         // When
         Cart result = cartService.getCart(sessionId);
@@ -113,7 +119,7 @@ class CartServiceTest {
         doReturn(cartId).when(savedCart).getId();
 
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.empty());
+        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.empty());
         when(cartRepository.save(any(Cart.class))).thenReturn(savedCart);
 
         // When
@@ -138,7 +144,7 @@ class CartServiceTest {
         doReturn(cartId).when(savedCart).getId();
 
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(expiredCart));
+        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(expiredCart));
         when(cartRepository.save(any(Cart.class))).thenReturn(savedCart);
 
         // When
@@ -154,7 +160,7 @@ class CartServiceTest {
         // Given
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         Cart cart = new Cart(sessionId, 30);
-        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
+        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(cart));
         when(cartRepository.save(any(Cart.class))).thenReturn(cart);
 
         // When

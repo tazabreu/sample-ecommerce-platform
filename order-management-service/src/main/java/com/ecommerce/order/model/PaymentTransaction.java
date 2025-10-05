@@ -74,7 +74,7 @@ public class PaymentTransaction {
 
     @NotNull(message = "Payment status is required")
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, columnDefinition = "payment_status")
     private PaymentStatus status = PaymentStatus.PENDING;
 
     @NotNull(message = "Payment method is required")

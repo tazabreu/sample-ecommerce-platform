@@ -4,14 +4,14 @@ spring:
   datasource:
     url: jdbc:tc:postgresql:15-alpine:///testdb
     driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
-  
+
   jpa:
     hibernate:
       ddl-auto: validate
     show-sql: false
-  
+
   kafka:
-    bootstrap-servers: ${spring.embedded.kafka.brokers}
+    bootstrap-servers: localhost:9092
     listener:
       concurrency: 1
 
@@ -21,7 +21,24 @@ logging:
     com.ecommerce.order: DEBUG
     org.testcontainers: INFO
 
+management:
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  health:
+    kafka:
+      enabled: false
+
 app:
+  security:
+    jwt:
+      enabled: false
+      mock-enabled: true
   payment:
     service:
       mock:

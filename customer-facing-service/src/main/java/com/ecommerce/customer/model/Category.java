@@ -30,7 +30,9 @@ import java.util.UUID;
 @Table(name = "categories", indexes = {
     @Index(name = "idx_category_name", columnList = "name", unique = true)
 })
-public class Category {
+public class Category implements java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

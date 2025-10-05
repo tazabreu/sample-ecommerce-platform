@@ -5,7 +5,7 @@
 
 set -e
 
-KAFKA_CONTAINER="redpanda"
+KAFKA_CONTAINER="ecommerce-infrastructure-redpanda"
 BOOTSTRAP_SERVER="localhost:9092"
 
 echo "Creating Kafka topics for e-commerce platform..."
