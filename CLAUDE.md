@@ -222,6 +222,8 @@ docker exec -it postgres-order psql -U order_user -d order_db
 
 ## Commit Message Style
 
+**IMPORTANT**: Before committing, review `AGENTS.md` for commit workflow best practices and guardrails.
+
 Follow conventional commits with emojis:
 ```
 <emoji> <type>(<scope>): <description>
@@ -229,11 +231,21 @@ Follow conventional commits with emojis:
 <optional body with bullet points>
 ```
 
+**Pre-Commit Checklist (from AGENTS.md):**
+1. Review all changes comprehensively (`git status --short`, `git diff --stat`)
+2. Create visual change tree to understand scope
+3. Analyze impact: production code vs tests vs docs vs infrastructure
+4. Draft commit message following project's constitution
+5. Verify tasks.md is synchronized if completing tasks
+6. Ensure commit message has detailed body for non-trivial changes
+
 Examples:
 - `✨ feat(cart): add Redis caching for cart operations`
 - `🔧 chore(deps): replace Spring Data JPA with JDBC (M029-M030)`
 - `♻️ refactor(entities): transform JPA entities to JDBC aggregates`
 - `🐛 fix(order): add explicit ENUM cast in findWithFilters query`
+
+**Co-Authorship**: Include `Co-Authored-By: Claude <noreply@anthropic.com>` for AI pair programming
 
 ## API Documentation
 
