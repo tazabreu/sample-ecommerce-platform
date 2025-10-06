@@ -163,10 +163,30 @@ docker-restart: docker-down docker-up ## Restart all services
 
 # Manual testing targets
 .PHONY: manual-test
-manual-test: ## Run manual tests using the Python test runner
-	@echo "$(YELLOW)Running manual tests...$(NC)"
-	cd manual-tests && python3 test_runner.py
+manual-test: ## Run manual tests using the Python test runner (interactive mode)
+	@echo "$(YELLOW)Running manual tests (interactive mode)...$(NC)"
+	@if [ ! -d "manual-tests/venv" ]; then \
+		echo "$(YELLOW)Setting up virtual environment for manual tests...$(NC)"; \
+		cd manual-tests && python3 -m venv venv; \
+	fi
+	@echo "$(YELLOW)Ensuring requirements are up to date...$(NC)"
+	@cd manual-tests && source venv/bin/activate && python3 -m pip install -r requirements.txt --quiet
+	@echo "$(YELLOW)Running test runner in interactive mode...$(NC)"
+	cd manual-tests && source venv/bin/activate && python3 test_runner.py interactive
 	@echo "$(GREEN)Manual tests completed.$(NC)"
+
+.PHONY: manual-test-full
+manual-test-full: ## Run full automated end-to-end test flow
+	@echo "$(YELLOW)Running full automated test flow...$(NC)"
+	@if [ ! -d "manual-tests/venv" ]; then \
+		echo "$(YELLOW)Setting up virtual environment for manual tests...$(NC)"; \
+		cd manual-tests && python3 -m venv venv; \
+	fi
+	@echo "$(YELLOW)Ensuring requirements are up to date...$(NC)"
+	@cd manual-tests && source venv/bin/activate && python3 -m pip install -r requirements.txt --quiet
+	@echo "$(YELLOW)Running full test flow...$(NC)"
+	cd manual-tests && source venv/bin/activate && python3 test_runner.py full-flow
+	@echo "$(GREEN)Full test flow completed.$(NC)"
 
 .PHONY: manual-test-setup
 manual-test-setup: ## Set up manual test environment

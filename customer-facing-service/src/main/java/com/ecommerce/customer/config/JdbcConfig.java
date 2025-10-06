@@ -2,10 +2,14 @@ package com.ecommerce.customer.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.jdbc.repository.config.AbstractJdbcConfiguration;
 import org.springframework.data.jdbc.repository.config.EnableJdbcAuditing;
 import org.springframework.data.relational.core.mapping.NamingStrategy;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 @EnableJdbcAuditing
@@ -14,6 +18,15 @@ public class JdbcConfig extends AbstractJdbcConfiguration {
     @Bean
     NamingStrategy namingStrategy() {
         return new SnakeCaseNamingStrategy();
+    }
+
+    @Override
+    protected List<Converter<?, ?>> userConverters() {
+        List<Converter<?, ?>> converters = new ArrayList<>();
+        converters.add(new OutboxStatusConverter.StatusReadingConverter());
+        converters.add(new OutboxStatusConverter.StatusWritingConverter());
+        converters.add(new PostgresJsonConverters.JsonbToStringConverter());
+        return converters;
     }
 
     private static String toSnakeCase(String value) {

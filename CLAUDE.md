@@ -266,3 +266,4 @@ python test_runner.py
 - Do not reformat unrelated code
 - When proposing changes, cite code using `file:line` format
 - Ask clarifying questions before making significant architectural decisions
+- **Always keep `specs/001-e-commerce-platform/tasks.md` synchronized with implementation**: Mark tasks complete [X] with evidence (files, implementation details) immediately after changes. Never let tasks.md drift from codebase state

@@ -16,8 +16,10 @@ import org.springframework.data.jdbc.repository.config.AbstractJdbcConfiguration
 import org.springframework.data.jdbc.repository.config.EnableJdbcAuditing;
 import org.springframework.data.relational.core.mapping.NamingStrategy;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
+import org.springframework.jdbc.core.SqlParameterValue;
 
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.List;
 import java.util.Map;
 
@@ -131,12 +133,14 @@ public class JdbcConfig extends AbstractJdbcConfiguration {
      * This enables proper type handling for nullable enum parameters in queries.
      */
     @WritingConverter
-    private enum OrderStatusWritingConverter implements Converter<OrderStatus, String> {
+    private enum OrderStatusWritingConverter implements Converter<OrderStatus, SqlParameterValue> {
         INSTANCE;
 
         @Override
-        public String convert(OrderStatus source) {
-            return source != null ? source.name() : null;
+        public SqlParameterValue convert(OrderStatus source) {
+            return source == null
+                    ? new SqlParameterValue(Types.OTHER, null)
+                    : new SqlParameterValue(Types.OTHER, source.name());
         }
     }
 
@@ -166,12 +170,14 @@ public class JdbcConfig extends AbstractJdbcConfiguration {
      * This enables proper type handling for nullable enum parameters in queries.
      */
     @WritingConverter
-    private enum PaymentStatusWritingConverter implements Converter<PaymentStatus, String> {
+    private enum PaymentStatusWritingConverter implements Converter<PaymentStatus, SqlParameterValue> {
         INSTANCE;
 
         @Override
-        public String convert(PaymentStatus source) {
-            return source != null ? source.name() : null;
+        public SqlParameterValue convert(PaymentStatus source) {
+            return source == null
+                    ? new SqlParameterValue(Types.OTHER, null)
+                    : new SqlParameterValue(Types.OTHER, source.name());
         }
     }
 

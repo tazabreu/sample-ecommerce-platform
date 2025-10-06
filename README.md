@@ -1,296 +1,123 @@
 # E-Commerce Platform
 
-> Headless e-commerce platform with microservices architecture, event-driven order processing, and resilience-first design patterns.
+> Enterprise-grade, resilience-first commerce stack built for continuous experimentation and operational calm.
 
-## Overview
+## Executive Summary
+- Two Spring Boot 3.2 (Java 21) microservices: customer experience on port 8080, order orchestration on port 8081.
+- Event-driven backbone via Redpanda/Kafka with transactional outbox, idempotency, and DLQ coverage.
+- Production guardrails baked in: TDD workflow, structured logging, Micrometer RED metrics, SLO-aligned health checks.
+- Infrastructure delivered through Docker Compose locally, Kubernetes manifests for deployment, and Testcontainers in CI.
+- Detailed operational playbooks in `docs/` and automated quickstart validation under `scripts/` keep drift in check.
 
-This project implements a demonstration-scale e-commerce platform with two microservices:
+## Architecture Overview
+```mermaid
+flowchart LR
+    Browser[Client] -->|REST| CustomerService[Customer-Facing Service]
+    CustomerService -->|JDBC| CustomerDB[(PostgreSQL<br/>customer_db)]
+    CustomerService --> Redis[(Redis Cache)]
+    CustomerService -->|orders.created| Kafka[(Redpanda / Kafka)]
+    Kafka -->|orders.created| OrderService[Order Management Service]
+    OrderService -->|JDBC| OrderDB[(PostgreSQL<br/>order_db)]
+    OrderService -->|payments.completed| Kafka
+    OrderService -->|HTTP| PaymentGateway[Payment Provider Stub]
+    CustomerService -.->|Metrics + Logs| Observability[(Prometheus + Structured Logs)]
+    OrderService -.->|Metrics + Logs| Observability
+```
 
-1. **Customer-Facing Service** (Port 8080): Catalog browsing, shopping cart, and checkout
-2. **Order Management Service** (Port 8081): Order processing, payment handling, and fulfillment
+**Integration contracts**:
+- REST APIs documented through Swagger UI per service.
+- Kafka topics: `orders.created` (producer: customer service, consumer: order service) and `payments.completed` (producer: payment stub, consumer: order service), each with DLQ.
+- Cross-cutting concern propagation: `X-Correlation-ID` traced from ingress to events and logs.
 
-### Key Features
+## Key Capabilities
+- **Customer Journey**: catalog browsing, cart lifecycle, checkout with idempotency, and order tracking.
+- **Operational Safety Nets**: transactional outbox publisher, retry/backoff, DLQ monitoring, and replay guidance.
+- **Security Posture**: JWT resource servers, role-aware endpoints (`ROLE_MANAGER` for administrative flows).
+- **Observability Discipline**: RED metrics, business KPIs (`orders_created_total`, `checkout_success_total`), Prometheus scraping ready.
+- **Compliance with RFC 7807**: uniform error payloads from both services.
 
-- ✅ **Microservices Architecture**: Independent services with domain-driven boundaries
-- ✅ **Event-Driven**: Kafka for asynchronous order processing
-- ✅ **Resilience Patterns**: Circuit breakers, retries, timeouts (Resilience4j)
-- ✅ **Observability**: Prometheus metrics, structured JSON logging, correlation IDs
-- ✅ **TDD Approach**: Contract tests, integration tests, unit tests
-- ✅ **Production-Ready**: Health checks, graceful shutdown, database migrations
-
-## Technology Stack
-
-- **Language**: Java 21
-- **Framework**: Spring Boot 3.2.x
-- **Build Tool**: Maven 3.8+
-- **Database**: PostgreSQL 15
-- **Cache**: Redis 7
-- **Messaging**: Apache Kafka (Redpanda for local development)
-- **Testing**: JUnit 5, Testcontainers, REST Assured
-
-## Quick Start
-
-### Prerequisites
-
-- Java 21 (OpenJDK or Oracle)
+## Run It Locally
+### 1. Prerequisites
+- Java 21 (Temurin recommended)
 - Maven 3.8+
-- Docker & Docker Compose
-- 8GB RAM (for Docker containers)
+- Docker Desktop (8 GB memory allocation)
+- `jq` and `curl` for diagnostics
 
-### 1. Start Infrastructure
-
+### 2. Bootstrap Infrastructure
 ```bash
 cd infrastructure
 docker-compose up -d
-
-# Verify services are running
 docker-compose ps
 
-# Create Kafka topics
+# Provision Kafka topics once containers are healthy
 chmod +x kafka/create-topics.sh
 ./kafka/create-topics.sh
 ```
 
-### 2. Build Services
-
+### 3. Build Services
 ```bash
-# Build all services
-mvn clean install -DskipTests
-
-# Or build individually
-cd customer-facing-service && mvn clean install -DskipTests
-cd ../order-management-service && mvn clean install -DskipTests
+mvn -T4 clean install -DskipTests
 ```
 
-### 3. Run Services
-
-**Terminal 1 - Customer Service:**
+### 4. Launch Applications (dev profile)
 ```bash
+# Terminal 1
 cd customer-facing-service
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
 
-**Terminal 2 - Order Service:**
-```bash
+# Terminal 2
 cd order-management-service
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 4. Verify Health
-
+### 5. Validate Startup
 ```bash
-# Customer Service
-curl http://localhost:8080/actuator/health
-
-# Order Service
-curl http://localhost:8081/actuator/health
+curl -H "X-Correlation-ID: local-smoke" http://localhost:8080/actuator/health
+curl -H "X-Correlation-ID: local-smoke" http://localhost:8081/actuator/health
 ```
 
-Expected response:
-```json
-{
-  "status": "UP",
-  "components": {
-    "db": {"status": "UP"},
-    "redis": {"status": "UP"},
-    "kafka": {"status": "UP"}
-  }
-}
-```
+## Quality Gates & Testing
+- **Contract + Unit Tests**: `mvn test`
+- **Integration Tests (Testcontainers)**: `mvn verify`
+- **Static Analysis**: `mvn -Pci verify sonar:sonar`
+- **Quickstart Flow Smoke**: `scripts/validate-quickstart.sh` (sets up data, drives checkout, asserts order completion)
 
-## API Documentation
+Testing adheres to the repository constitution: write failing tests first, then implement; keep diffs tight; document behavioral shifts alongside code.
 
-Once services are running, access Swagger UI:
+## Deployment Playbook
+1. Build OCI images: `mvn -Pprod clean package jib:dockerBuild`
+2. Publish charts/manifests (see `infrastructure/k8s/` when available) with environment-specific overlays.
+3. Configure external secrets (`DATABASE_URL`, `JWT_SECRET`, etc.) via your secret manager.
+4. Roll out using progressive delivery (e.g., Argo Rollouts) with health and metric-based guards.
+5. Run `scripts/validate-quickstart.sh --target remote` against the deployed endpoint to confirm the golden path.
 
-- **Customer Service API**: http://localhost:8080/swagger-ui.html
-- **Order Service API**: http://localhost:8081/swagger-ui.html
+## Observability & Operations
+- Metrics endpoint: `/actuator/prometheus` on both services.
+- Health probes: `/actuator/health`, `/actuator/health/liveness`, `/actuator/health/readiness`.
+- Logs: JSON structured, correlation ID in the `correlationId` field.
+- Runbook: `docs/runbook.md` summarises alert responses, dashboards, and recovery scripts.
 
-OpenAPI specs:
-- Customer Service: http://localhost:8080/v3/api-docs
-- Order Service: http://localhost:8081/v3/api-docs
+Prometheus/Grafana configuration templates live under `infrastructure/prometheus/` and `infrastructure/grafana/` once those tasks are implemented.
 
-## Project Structure
+## Troubleshooting Cheatsheet
+- **Kafka consumer lag**: inspect via `docker exec -it redpanda rpk group describe order-service-group` and follow runbook remediation.
+- **Circuit breaker open**: check `/actuator/health` details and payment gateway reachability; monitor `resilience4j_circuitbreaker_state` metric.
+- **Idempotency conflicts**: verify the `CheckoutIdempotency` table; ensure clients reuse the `Idempotency-Key` header.
+- **Database migrations**: check Flyway history via `SELECT * FROM flyway_schema_history;` in each database.
+- **Cross-service tracing gaps**: confirm `X-Correlation-ID` header flows end-to-end using logs and events.
 
-```
-ecommerce-platform/
-├── customer-facing-service/       # Catalog, cart, checkout microservice
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/ecommerce/customer/
-│   │   │   │   ├── config/       # Configuration classes
-│   │   │   │   ├── model/        # JPA entities
-│   │   │   │   ├── repository/   # Data access layer
-│   │   │   │   ├── service/      # Business logic
-│   │   │   │   ├── controller/   # REST endpoints
-│   │   │   │   ├── dto/          # Data transfer objects
-│   │   │   │   ├── event/        # Kafka event publishers
-│   │   │   │   └── exception/    # Exception handlers
-│   │   │   └── resources/
-│   │   │       ├── db/migration/ # Flyway migrations
-│   │   │       ├── application.yml
-│   │   │       └── logback-spring.xml
-│   │   └── test/                  # Tests
-│   └── pom.xml
-│
-├── order-management-service/      # Order processing microservice
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/ecommerce/order/
-│   │   │   │   ├── config/       # Configuration classes
-│   │   │   │   ├── model/        # JPA entities
-│   │   │   │   ├── repository/   # Data access layer
-│   │   │   │   ├── service/      # Business logic
-│   │   │   │   ├── controller/   # REST endpoints
-│   │   │   │   ├── dto/          # Data transfer objects
-│   │   │   │   ├── event/        # Kafka event consumers
-│   │   │   │   ├── payment/      # Payment service
-│   │   │   │   └── exception/    # Exception handlers
-│   │   │   └── resources/
-│   │   │       ├── db/migration/ # Flyway migrations
-│   │   │       ├── application.yml
-│   │   │       └── logback-spring.xml
-│   │   └── test/                  # Tests
-│   └── pom.xml
-│
-├── infrastructure/                 # Docker Compose, Kafka config
-│   ├── docker-compose.yml
-│   ├── docker-compose.override.yml
-│   └── kafka/
-│       └── create-topics.sh
-│
-├── specs/                          # Design documentation
-│   └── 001-e-commerce-platform/
-│       ├── spec.md                 # Feature specification
-│       ├── plan.md                 # Implementation plan
-│       ├── data-model.md           # Data model
-│       ├── research.md             # Technical decisions
-│       ├── quickstart.md           # User journey guide
-│       ├── tasks.md                # Task breakdown
-│       └── contracts/              # API contracts
-│           ├── customer-service-api.yaml
-│           ├── order-service-api.yaml
-│           └── kafka-events.md
-│
-├── pom.xml                         # Parent POM
-├── .env.example                    # Environment variables template
-├── .gitignore
-└── README.md                       # This file
-```
+## Reference Materials
+- `specs/001-e-commerce-platform/spec.md` — canonical requirements.
+- `specs/001-e-commerce-platform/plan.md` — delivery plan and sequencing.
+- `specs/001-e-commerce-platform/data-model.md` — domain schema.
+- `specs/001-e-commerce-platform/contracts/` — REST and event contracts.
+- `docs/runbook.md` — operational response guidance.
+- `specs/001-e-commerce-platform/tasks.md` — task register with current status.
 
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-mvn test
-
-# Run integration tests
-mvn verify
-
-# Run tests for specific service
-cd customer-facing-service && mvn test
-```
-
-### Database Migrations
-
-Flyway migrations run automatically on application startup. To manually run migrations:
-
-```bash
-mvn flyway:migrate
-```
-
-### Accessing Databases
-
-```bash
-# Customer database
-docker exec -it postgres-customer psql -U customer_user -d customer_db
-
-# Order database
-docker exec -it postgres-order psql -U order_user -d order_db
-```
-
-### Monitoring Kafka
-
-```bash
-# List topics
-docker exec -it redpanda rpk topic list
-
-# Consume messages
-docker exec -it redpanda rpk topic consume orders.created --brokers localhost:9092
-
-# Check consumer group
-docker exec -it redpanda rpk group describe order-service-group
-```
-
-## Observability
-
-### Prometheus Metrics
-
-Metrics are exposed at:
-- Customer Service: http://localhost:8080/actuator/prometheus
-- Order Service: http://localhost:8081/actuator/prometheus
-
-Key metrics:
-- `http_server_requests_seconds_*` - Request latency and count
-- `jvm_memory_*` - JVM memory usage
-- `kafka_consumer_*` - Kafka consumer lag
-- `resilience4j_circuitbreaker_*` - Circuit breaker state
-
-### Structured Logging
-
-All logs are in JSON format with correlation IDs:
-
-```bash
-# View logs with correlation ID
-docker logs customer-facing-service | jq 'select(.correlationId=="req-abc123")'
-
-# View error logs
-docker logs order-management-service | jq 'select(.level=="ERROR")'
-```
-
-## Configuration
-
-See `.env.example` for environment variable configuration.
-
-Key configurations:
-- Database connections: `application.yml`
-- Kafka topics: `infrastructure/kafka/create-topics.sh`
-- Resilience patterns: `config/ResilienceConfig.java`
-- Logging: `logback-spring.xml`
-
-## Documentation
-
-- **Feature Specification**: `specs/001-e-commerce-platform/spec.md`
-- **Implementation Plan**: `specs/001-e-commerce-platform/plan.md`
-- **Data Model**: `specs/001-e-commerce-platform/data-model.md`
-- **API Contracts**: `specs/001-e-commerce-platform/contracts/`
-- **Quickstart Guide**: `specs/001-e-commerce-platform/quickstart.md`
-- **Task Breakdown**: `specs/001-e-commerce-platform/tasks.md`
-
-## Status
-
-**Phase 3.1: Infrastructure Setup** ✅ **COMPLETE**
-
-- [X] Maven multi-module project structure
-- [X] Docker Compose infrastructure (PostgreSQL, Redis, Kafka)
-- [X] Database migrations (Flyway)
-- [X] Application configuration (Spring Boot)
-- [X] Resilience patterns (Resilience4j)
-- [X] Observability (Micrometer, Actuator)
-- [X] Structured logging (Logback with correlation IDs)
-
-**Next Phase**: Contract Tests (TDD approach)
-
-## Contributing
-
-This is a demonstration project following TDD and constitutional development principles. See `specs/001-e-commerce-platform/plan.md` for the complete implementation approach.
-
-## License
-
-This project is for demonstration purposes.
+## Governance
+- Development follows the AGENTS constitution (`AGENTS.md`) with explicit roles across product, architecture, implementation, QA, and operations.
+- Java 21 is the supported baseline across build, CI, and runtime; avoid 22+ features or toolchain flags.
+- Annotation processing remains disabled for tests unless explicitly required to maintain deterministic pipelines.
 
 ## Contact
-
-For questions or issues, see the project documentation in `specs/001-e-commerce-platform/`.
-
+Maintainers coordinate via the Implementation Agent. Raise issues via the task register or open an ADR under `docs/adrs/` for material decisions.

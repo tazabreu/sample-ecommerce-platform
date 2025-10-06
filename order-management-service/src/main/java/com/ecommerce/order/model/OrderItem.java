@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 
@@ -40,7 +41,7 @@ import java.util.UUID;
  * </ul>
  */
 @Table("order_items")
-public class OrderItem {
+public class OrderItem implements StatefulPersistable<UUID> {
 
     @Id
     private UUID id;
@@ -67,6 +68,9 @@ public class OrderItem {
     @NotNull(message = "Subtotal is required")
     private BigDecimal subtotal;
     private Instant createdAt;
+
+    @Transient
+    private boolean isNew = true;
 
     // Constructors
 
@@ -117,6 +121,7 @@ public class OrderItem {
 
     // Getters (no setters - immutable)
 
+    @Override
     public UUID getId() {
         return id;
     }
@@ -179,6 +184,16 @@ public class OrderItem {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 
     // Business methods

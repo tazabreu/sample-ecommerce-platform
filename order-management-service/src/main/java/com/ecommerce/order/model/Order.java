@@ -4,10 +4,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.MappedCollection;
 import org.springframework.data.relational.core.mapping.Table;
+import org.springframework.data.annotation.Transient;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -40,7 +40,7 @@ import java.util.UUID;
  * </ul>
  */
 @Table("orders")
-public class Order implements Auditable {
+public class Order implements Auditable, StatefulPersistable<UUID> {
 
     @Id
     private UUID id;
@@ -82,6 +82,9 @@ public class Order implements Auditable {
 
     private Instant completedAt;
 
+    @Transient
+    private boolean isNew = true;
+
     // Constructors
 
     /**
@@ -113,6 +116,7 @@ public class Order implements Auditable {
 
     // Getters and Setters
 
+    @Override
     public UUID getId() {
         return id;
     }
@@ -211,6 +215,16 @@ public class Order implements Auditable {
 
     public void setCompletedAt(Instant completedAt) {
         this.completedAt = completedAt;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 
     // Business methods (State Machine)

@@ -119,10 +119,10 @@ public interface OrderRepository extends PagingAndSortingRepository<Order, UUID>
      * @return a list of orders matching the filters
      */
     @Query("SELECT * FROM orders WHERE " +
-           "(:customerEmail IS NULL OR customer_email = :customerEmail) AND " +
-           "(:statusString IS NULL OR status::text = :statusString) AND " +
-           "(:startDate::timestamp IS NULL OR created_at >= :startDate::timestamp) AND " +
-           "(:endDate::timestamp IS NULL OR created_at <= :endDate::timestamp) " +
+           "(COALESCE(:customerEmail, customer_email) = customer_email) AND " +
+           "(COALESCE(:statusString, status::text) = status::text) AND " +
+           "(created_at >= COALESCE(:startDate, created_at)) AND " +
+           "(created_at <= COALESCE(:endDate, created_at)) " +
            "ORDER BY created_at DESC " +
            "LIMIT :limit OFFSET :offset")
     List<Order> findWithFilters(@Param("customerEmail") String customerEmail,

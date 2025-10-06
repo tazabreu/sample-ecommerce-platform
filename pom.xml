@@ -21,49 +21,34 @@
 
     <properties>
         <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <!-- Spring Boot -->
+        <!-- Spring Boot BOM - manages most dependencies -->
         <spring-boot.version>3.2.0</spring-boot.version>
         
         <!-- Database -->
-        <postgresql.version>42.7.1</postgresql.version>
         <flyway.version>10.4.1</flyway.version>
-        
-        <!-- Redis -->
-        <spring-data-redis.version>3.2.0</spring-data-redis.version>
-        <lettuce.version>6.3.0.RELEASE</lettuce.version>
-        
-        <!-- Kafka -->
-        <spring-kafka.version>3.1.0</spring-kafka.version>
         
         <!-- Resilience -->
         <resilience4j.version>2.1.0</resilience4j.version>
         
-        <!-- Observability -->
-        <micrometer.version>1.12.0</micrometer.version>
-        
         <!-- Mapping -->
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         
-        <!-- Validation -->
-        <jakarta-validation.version>3.0.2</jakarta-validation.version>
+        <!-- API Documentation -->
+        <springdoc-openapi.version>2.3.0</springdoc-openapi.version>
         
         <!-- Logging -->
         <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
         
         <!-- Testing -->
-        <junit-jupiter.version>5.11.4</junit-jupiter.version>
-        <mockito.version>5.14.2</mockito.version>
         <testcontainers.version>1.20.4</testcontainers.version>
-        <rest-assured.version>5.5.0</rest-assured.version>
 
         <!-- Plugins -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+        <jacoco-maven-plugin.version>0.8.12</jacoco-maven-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -77,14 +62,7 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- PostgreSQL -->
-            <dependency>
-                <groupId>org.postgresql</groupId>
-                <artifactId>postgresql</artifactId>
-                <version>${postgresql.version}</version>
-            </dependency>
-
-            <!-- Flyway -->
+            <!-- Flyway - version managed explicitly for PostgreSQL dialect -->
             <dependency>
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-core</artifactId>
@@ -94,25 +72,6 @@
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-database-postgresql</artifactId>
                 <version>${flyway.version}</version>
-            </dependency>
-
-            <!-- Redis -->
-            <dependency>
-                <groupId>org.springframework.data</groupId>
-                <artifactId>spring-data-redis</artifactId>
-                <version>${spring-data-redis.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.lettuce</groupId>
-                <artifactId>lettuce-core</artifactId>
-                <version>${lettuce.version}</version>
-            </dependency>
-
-            <!-- Kafka -->
-            <dependency>
-                <groupId>org.springframework.kafka</groupId>
-                <artifactId>spring-kafka</artifactId>
-                <version>${spring-kafka.version}</version>
             </dependency>
 
             <!-- Resilience4j -->
@@ -137,13 +96,6 @@
                 <version>${resilience4j.version}</version>
             </dependency>
 
-            <!-- Micrometer & Prometheus -->
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-prometheus</artifactId>
-                <version>${micrometer.version}</version>
-            </dependency>
-
             <!-- MapStruct -->
             <dependency>
                 <groupId>org.mapstruct</groupId>
@@ -157,11 +109,11 @@
                 <scope>provided</scope>
             </dependency>
 
-            <!-- Jakarta Validation -->
+            <!-- SpringDoc OpenAPI -->
             <dependency>
-                <groupId>jakarta.validation</groupId>
-                <artifactId>jakarta.validation-api</artifactId>
-                <version>${jakarta-validation.version}</version>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc-openapi.version}</version>
             </dependency>
 
             <!-- Logstash Logback Encoder -->
@@ -171,28 +123,13 @@
                 <version>${logstash-logback-encoder.version}</version>
             </dependency>
 
-            <!-- Testcontainers -->
+            <!-- Testcontainers BOM -->
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-
-            <!-- TestContainers Redis -->
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>redis</artifactId>
-                <scope>test</scope>
-            </dependency>
-
-            <!-- REST Assured -->
-            <dependency>
-                <groupId>io.rest-assured</groupId>
-                <artifactId>rest-assured</artifactId>
-                <version>${rest-assured.version}</version>
-                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -224,21 +161,43 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
-                    <configuration>
-                        <release>${java.version}</release>
-                        <annotationProcessorPaths>
-                            <path>
-                                <groupId>org.mapstruct</groupId>
-                                <artifactId>mapstruct-processor</artifactId>
-                                <version>${mapstruct.version}</version>
-                            </path>
-                        </annotationProcessorPaths>
-                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>default-compile</id>
+                            <phase>compile</phase>
+                            <goals>
+                                <goal>compile</goal>
+                            </goals>
+                            <configuration>
+                                <release>${java.version}</release>
+                                <parameters>true</parameters>
+                                <annotationProcessorPaths>
+                                    <path>
+                                        <groupId>org.mapstruct</groupId>
+                                        <artifactId>mapstruct-processor</artifactId>
+                                        <version>${mapstruct.version}</version>
+                                    </path>
+                                </annotationProcessorPaths>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>default-testCompile</id>
+                            <phase>test-compile</phase>
+                            <goals>
+                                <goal>testCompile</goal>
+                            </goals>
+                            <configuration>
+                                <release>${java.version}</release>
+                                <proc>none</proc>
+                                <!-- Disable annotation processing for test sources per AGENTS.md rule 9 -->
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.12</version>
+                    <version>${jacoco-maven-plugin.version}</version>
                     <executions>
                         <execution>
                             <goals>
@@ -251,6 +210,34 @@
                             <goals>
                                 <goal>report</goal>
                             </goals>
+                            <configuration>
+                                <!-- Focus coverage on main business logic packages -->
+                                <excludes>
+                                    <!-- Exclude generated code -->
+                                    <exclude>**/*MapperImpl.java</exclude>
+                                    <!-- Exclude main application classes -->
+                                    <exclude>**/*Application.java</exclude>
+                                    <!-- Exclude configuration classes -->
+                                    <exclude>**/config/**</exclude>
+                                    <!-- Exclude generated sources -->
+                                    <exclude>**/generated/**</exclude>
+                                    <!-- Exclude DTOs and records (data transfer objects) -->
+                                    <exclude>**/dto/**/*.java</exclude>
+                                    <!-- Exclude exception classes -->
+                                    <exclude>**/exception/**</exclude>
+                                    <!-- Exclude model/entity classes (unless they have business logic) -->
+                                    <exclude>**/model/*Address.java</exclude>
+                                    <exclude>**/model/*Status.java</exclude>
+                                    <exclude>**/model/*Event.java</exclude>
+                                    <!-- Exclude test utilities and helpers -->
+                                    <exclude>**/testsupport/**</exclude>
+                                    <!-- Exclude simple getters/setters and toString methods -->
+                                    <exclude>**/model/Order.java</exclude>
+                                    <exclude>**/model/Product.java</exclude>
+                                    <exclude>**/model/Category.java</exclude>
+                                    <exclude>**/model/Cart.java</exclude>
+                                </excludes>
+                            </configuration>
                         </execution>
                         <execution>
                             <id>report-aggregate</id>
@@ -259,15 +246,37 @@
                                 <goal>report-aggregate</goal>
                             </goals>
                         </execution>
+                        <execution>
+                            <id>check</id>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.80</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.75</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                            </configuration>
+                        </execution>
                     </executions>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${maven-surefire-plugin.version}</version>
-                    <configuration>
-                        <argLine>--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.text=ALL-UNNAMED --add-opens java.desktop/java.awt.font=ALL-UNNAMED -Dnet.bytebuddy.experimental=true</argLine>
-                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>

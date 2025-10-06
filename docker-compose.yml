@@ -126,7 +126,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=dev_redis_password
       # Kafka Configuration
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
       # JWT Configuration (Mock for development)
       - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
       - JWT_ISSUER=ecommerce-platform-dev
@@ -165,7 +165,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=order_user
       - SPRING_DATASOURCE_PASSWORD=dev_password_order
       # Kafka Configuration
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
       # JWT Configuration (Mock for development)
       - JWT_SECRET=demo-secret-key-for-local-development-only-do-not-use-in-production
       - JWT_ISSUER=ecommerce-platform-dev

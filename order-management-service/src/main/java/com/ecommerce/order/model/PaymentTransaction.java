@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 
@@ -40,7 +41,7 @@ import java.util.UUID;
  * </pre>
  */
 @Table("payment_transactions")
-public class PaymentTransaction implements Auditable {
+public class PaymentTransaction implements Auditable, StatefulPersistable<UUID> {
 
     @Id
     private UUID id;
@@ -73,6 +74,9 @@ public class PaymentTransaction implements Auditable {
     private Instant updatedAt;
 
     private Instant completedAt;
+
+    @Transient
+    private boolean isNew = true;
 
     // Constructors
 
@@ -109,6 +113,7 @@ public class PaymentTransaction implements Auditable {
 
     // Getters and Setters
 
+    @Override
     public UUID getId() {
         return id;
     }
@@ -199,6 +204,16 @@ public class PaymentTransaction implements Auditable {
 
     public void setCompletedAt(Instant completedAt) {
         this.completedAt = completedAt;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 
     // Business methods

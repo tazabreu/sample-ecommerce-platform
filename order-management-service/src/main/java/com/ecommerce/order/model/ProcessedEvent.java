@@ -2,6 +2,7 @@ package com.ecommerce.order.model;
 
 import jakarta.validation.constraints.NotNull;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
@@ -37,7 +38,7 @@ import java.util.UUID;
  * </pre>
  */
 @Table("processed_events")
-public class ProcessedEvent {
+public class ProcessedEvent implements StatefulPersistable<UUID> {
 
     @Id
     @NotNull(message = "Event ID is required")
@@ -47,6 +48,9 @@ public class ProcessedEvent {
     private String eventType;
 
     private Instant processedAt;
+
+    @Transient
+    private boolean isNew = true;
 
     // Constructors
 
@@ -91,6 +95,21 @@ public class ProcessedEvent {
 
     public void setProcessedAt(Instant processedAt) {
         this.processedAt = processedAt;
+    }
+
+    @Override
+    public UUID getId() {
+        return eventId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 
     // Object methods

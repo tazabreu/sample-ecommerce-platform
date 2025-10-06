@@ -56,20 +56,30 @@ public class OutboxPublisher {
      */
     @Scheduled(fixedDelay = 5000, initialDelay = 10000)
     public void publishPendingEvents() {
-        List<OrderCreatedOutbox> pending = outboxRepository.findPendingEvents(BATCH_SIZE);
+        logger.info("Checking for pending outbox events...");
+        try {
+            long pendingCount = outboxRepository.countPending();
+            logger.info("Found {} pending events in database", pendingCount);
 
-        if (pending.isEmpty()) {
-            return;
-        }
+            List<OrderCreatedOutbox> pending = outboxRepository.findPendingEvents(BATCH_SIZE);
+            logger.info("Repository returned {} events", pending.size());
 
-        logger.info("Publishing {} pending outbox events", pending.size());
-
-        for (OrderCreatedOutbox outbox : pending) {
-            try {
-                publishEvent(outbox);
-            } catch (Exception e) {
-                handlePublishFailure(outbox, e);
+            if (pending.isEmpty()) {
+                logger.info("No pending outbox events found");
+                return;
             }
+
+            logger.info("Publishing {} pending outbox events", pending.size());
+
+            for (OrderCreatedOutbox outbox : pending) {
+                try {
+                    publishEvent(outbox);
+                } catch (Exception e) {
+                    handlePublishFailure(outbox, e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error in publishPendingEvents", e);
         }
     }
 
