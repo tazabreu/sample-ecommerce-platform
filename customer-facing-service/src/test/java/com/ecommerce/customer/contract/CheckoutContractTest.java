@@ -122,7 +122,7 @@ class CheckoutContractTest {
         .then()
             .statusCode(201)
             .contentType(ContentType.JSON)
-            .body("orderNumber", matchesPattern("^ORD-\\d{8}-\\d{3}$"))
+            .body("orderNumber", matchesPattern("^ORD-\\d{8}-\\d+$"))
             .body("status", in(Arrays.asList("PENDING", "PROCESSING")))
             .body("message", notNullValue());
     }

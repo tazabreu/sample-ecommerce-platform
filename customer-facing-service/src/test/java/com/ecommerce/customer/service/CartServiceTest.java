@@ -236,4 +236,170 @@ class CartServiceTest {
                 .isInstanceOf(InsufficientInventoryException.class)
                 .hasMessageContaining("Insufficient inventory");
     }
+
+    @Test
+    void addItemToCart_shouldIncrementExistingItemQuantity() {
+        // Given
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        Cart cart = new Cart(sessionId, 30);
+        cart = spy(cart);
+        UUID cartId = UUID.randomUUID();
+        doReturn(cartId).when(cart).getId();
+
+        CartItem existingItem = new CartItem(productId, 2, product.getPrice());
+        cart.setItems(java.util.List.of(existingItem));
+
+        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(Cart.class))).thenReturn(cart);
+
+        // When
+        Cart result = cartService.addItemToCart(sessionId, productId, 3);
+
+        // Then - should have 5 total (2 + 3)
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getQuantity()).isEqualTo(5);
+        verify(cartRepository).save(cart);
+    }
+
+    @Test
+    void updateCartItemQuantity_shouldUpdateQuantity_whenValid() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart = spy(cart);
+        UUID cartId = UUID.randomUUID();
+        doReturn(cartId).when(cart).getId();
+
+        UUID cartItemId = UUID.randomUUID();
+        CartItem item = new CartItem(productId, 2, product.getPrice());
+        item = spy(item);
+        doReturn(cartItemId).when(item).getId();
+        cart.setItems(java.util.List.of(item));
+
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(cartRepository.save(any(Cart.class))).thenReturn(cart);
+
+        // When
+        Cart result = cartService.updateCartItemQuantity(sessionId, cartItemId, 5);
+
+        // Then
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getQuantity()).isEqualTo(5);
+        verify(cartRepository).save(cart);
+    }
+
+    @Test
+    void updateCartItemQuantity_shouldThrow_whenItemNotFound() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart.setItems(java.util.List.of());
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+
+        UUID nonExistentItemId = UUID.randomUUID();
+
+        // When & Then
+        assertThatThrownBy(() -> cartService.updateCartItemQuantity(sessionId, nonExistentItemId, 5))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("CartItem");
+    }
+
+    @Test
+    void updateCartItemQuantity_shouldThrow_whenInsufficientInventory() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart = spy(cart);
+        UUID cartId = UUID.randomUUID();
+        doReturn(cartId).when(cart).getId();
+
+        UUID cartItemId = UUID.randomUUID();
+        CartItem item = new CartItem(productId, 2, product.getPrice());
+        item = spy(item);
+        doReturn(cartItemId).when(item).getId();
+        cart.setItems(java.util.List.of(item));
+
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+        when(product.getInventoryQuantity()).thenReturn(3);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+        // When & Then
+        assertThatThrownBy(() -> cartService.updateCartItemQuantity(sessionId, cartItemId, 10))
+                .isInstanceOf(InsufficientInventoryException.class)
+                .hasMessageContaining("Insufficient inventory");
+    }
+
+    @Test
+    void removeCartItem_shouldRemoveItem_whenExists() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart = spy(cart);
+        UUID cartId = UUID.randomUUID();
+        doReturn(cartId).when(cart).getId();
+
+        UUID cartItemId = UUID.randomUUID();
+        CartItem item = new CartItem(productId, 2, product.getPrice());
+        item = spy(item);
+        doReturn(cartItemId).when(item).getId();
+        cart.setItems(new java.util.ArrayList<>(java.util.List.of(item)));
+
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+        when(cartRepository.save(any(Cart.class))).thenReturn(cart);
+
+        // When
+        Cart result = cartService.removeCartItem(sessionId, cartItemId);
+
+        // Then
+        assertThat(result.getItems()).isEmpty();
+        verify(cartRepository).save(cart);
+    }
+
+    @Test
+    void removeCartItem_shouldThrow_whenItemNotFound() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart.setItems(new java.util.ArrayList<>());
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+
+        UUID nonExistentItemId = UUID.randomUUID();
+
+        // When & Then
+        assertThatThrownBy(() -> cartService.removeCartItem(sessionId, nonExistentItemId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("CartItem");
+    }
+
+    @Test
+    void clearCart_shouldRemoveAllItems() {
+        // Given
+        Cart cart = new Cart(sessionId, 30);
+        cart = spy(cart);
+        UUID cartId = UUID.randomUUID();
+        doReturn(cartId).when(cart).getId();
+
+        CartItem item1 = new CartItem(productId, 2, product.getPrice());
+        CartItem item2 = new CartItem(UUID.randomUUID(), 3, new BigDecimal("49.99"));
+        cart.setItems(new java.util.ArrayList<>(java.util.List.of(item1, item2)));
+
+        when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
+        when(cartRepository.save(any(Cart.class))).thenReturn(cart);
+
+        // When
+        cartService.clearCart(sessionId);
+
+        // Then
+        assertThat(cart.getItems()).isEmpty();
+        verify(cartRepository).save(cart);
+    }
+
+    @Test
+    void deleteCart_shouldDeleteFromBothStorages() {
+        // Given
+        when(valueOperations.get(anyString())).thenReturn(null);
+
+        // When
+        cartService.deleteCart(sessionId);
+
+        // Then
+        verify(cartRedisTemplate).delete("cart:" + sessionId);
+        verify(cartRepository).deleteBySessionId(sessionId);
+    }
 }

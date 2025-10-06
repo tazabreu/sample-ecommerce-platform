@@ -13,7 +13,7 @@
 - **Critical Dependencies**
   - PostgreSQL pods/containers: `postgres-customer`, `postgres-order`.
   - Redis cache: `redis`.
-  - Redpanda broker: `redpanda` with DLQ topics `orders.created.dlq` and `payments.completed.dlq`.
+  - Redpanda broker (preferred Kafka-compatible deployment): `redpanda` with DLQ topics `orders.created.dlq` and `payments.completed.dlq`.
   - External payment stub: `payment-gateway` (HTTP).
 - **Golden Signals**
   - `checkout_success_total`, `orders_created_total`, HTTP 5xx rate, Kafka consumer lag, circuit breaker state, JVM heap utilisation.
@@ -25,7 +25,7 @@
   - Key calculations:
     - Checkout success rate = `checkout_success_total / checkout_attempt_total`.
     - Payment success rate = `payments_completed_total / payments_attempted_total`.
-    - Kafka lag = `kafka_consumer_records_lag_max` (Micrometer) or `rpk group describe`.
+  - Kafka lag (tracked on the preferred Redpanda broker) = `kafka_consumer_records_lag_max` (Micrometer) or `rpk group describe`.
 - **Logs**
   - Format: JSON with `timestamp`, `level`, `correlationId`, `spanId`, `traceId`.
   - Access (Docker): `docker logs <service> | jq '.'` with correlation filtering.
@@ -39,23 +39,25 @@
 | Alert | Detection Hint | First Response | Escalation Trigger |
 | ----- | --------------- | -------------- | ------------------ |
 | Checkout success < 95% for 5m | Prometheus rule on `checkout_success_total` vs attempts | Run quickstart smoke, inspect payment stub, review error logs | Cannot restore >95% within 30m |
-| Kafka consumer lag > 1000 | `kafka_consumer_records_lag_max` or `rpk group describe order-service-group` | Check order service pods, restart consumer, inspect DLQ | Backlog still >1000 after 15m |
+| Kafka consumer lag > 1000 | `kafka_consumer_records_lag_max` or `rpk group describe order-service-group` (Redpanda preferred broker) | Check order service pods, restart consumer, inspect DLQ | Backlog still >1000 after 15m |
 | Circuit breaker open (payment) | `resilience4j_circuitbreaker_state{state="OPEN"} > 0` | Verify payment stub health, clear connectivity issues, ensure retries resume | Breaker oscillating for >10m |
 | Database connection errors | Surge in 5xx with `org.postgresql.util.PSQLException` | Validate DB pod health, check connection pool saturation, failover if needed | DB unreachable >10m |
 | Outbox backlog > 20 pending rows | Query `order_created_outbox` status | Restart publisher, replay DLQ events | Pending > 20 for >15m |
 
 ## 5. Incident Playbooks
 ### 5.1 Kafka Consumer Lag
-1. `docker exec -it redpanda rpk group describe order-service-group` (or `kubectl exec` if on K8s).
+1. `docker exec -it redpanda rpk group describe order-service-group` (or `kubectl exec` if on K8s; Redpanda is the preferred Kafka-compatible broker).
 2. If lag is confined to a partition, check for stuck consumer logs (`OrderCreatedEventConsumer`).
 3. Restart order service deployment/pod. Ensure `ORDER_SERVICE_KAFKA_BOOTSTRAP_SERVERS` points to healthy brokers.
 4. Inspect DLQ topic:
    ```bash
    docker exec -it redpanda rpk topic consume orders.created.dlq --num 5
    ```
-5. After recovery, replay DLQ messages once root cause fixed:
+5. After recovery, replay DLQ messages once root cause fixed using `rpk` or your platform's replay tooling. Example for local Redpanda (preferred broker):
    ```bash
-   ./manual-tests/replay-dlq.sh orders.created.dlq
+   docker exec -it redpanda rpk topic consume orders.created.dlq --num -1 > /tmp/orders.dlq
+   docker exec -i redpanda rpk topic produce orders.created < /tmp/orders.dlq
+   rm /tmp/orders.dlq
    ```
 
 ### 5.2 Payment Circuit Breaker Stuck Open

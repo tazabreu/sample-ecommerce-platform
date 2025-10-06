@@ -1,23 +1,23 @@
 #!/bin/bash
 
 # Kafka Topic Creation Script for E-Commerce Platform
-# This script creates the required Kafka topics with appropriate configurations
+# Preferred broker: Redpanda (Kafka-compatible). This script creates the required topics with appropriate configurations.
 
 set -e
 
 KAFKA_CONTAINER="ecommerce-infrastructure-redpanda"
 BOOTSTRAP_SERVER="localhost:9092"
 
-echo "Creating Kafka topics for e-commerce platform..."
+echo "Creating Kafka topics on Redpanda (preferred broker) for e-commerce platform..."
 
 # Wait for Kafka to be ready
-echo "Waiting for Kafka to be ready..."
+echo "Waiting for Redpanda (Kafka-compatible) to be ready..."
 for i in {1..30}; do
     if docker exec $KAFKA_CONTAINER rpk cluster health &>/dev/null; then
-        echo "Kafka is ready!"
+        echo "Redpanda is ready!"
         break
     fi
-    echo "Waiting for Kafka... ($i/30)"
+    echo "Waiting for Redpanda... ($i/30)"
     sleep 2
 done
 
@@ -61,4 +61,3 @@ docker exec $KAFKA_CONTAINER rpk topic list
 
 echo ""
 echo "Topic creation complete!"
-

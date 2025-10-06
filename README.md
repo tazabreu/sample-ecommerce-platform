@@ -4,7 +4,7 @@
 
 ## Executive Summary
 - Two Spring Boot 3.2 (Java 21) microservices: customer experience on port 8080, order orchestration on port 8081.
-- Event-driven backbone via Redpanda/Kafka with transactional outbox, idempotency, and DLQ coverage.
+- Event-driven backbone via Redpanda (Kafka-compatible) with transactional outbox, idempotency, and DLQ coverage; Redpanda is the preferred broker across environments.
 - Production guardrails baked in: TDD workflow, structured logging, Micrometer RED metrics, SLO-aligned health checks.
 - Infrastructure delivered through Docker Compose locally, Kubernetes manifests for deployment, and Testcontainers in CI.
 - Detailed operational playbooks in `docs/` and automated quickstart validation under `scripts/` keep drift in check.
@@ -15,7 +15,7 @@ flowchart LR
     Browser[Client] -->|REST| CustomerService[Customer-Facing Service]
     CustomerService -->|JDBC| CustomerDB[(PostgreSQL<br/>customer_db)]
     CustomerService --> Redis[(Redis Cache)]
-    CustomerService -->|orders.created| Kafka[(Redpanda / Kafka)]
+    CustomerService -->|orders.created| Kafka[(Redpanda preferred / Kafka-compatible)]
     Kafka -->|orders.created| OrderService[Order Management Service]
     OrderService -->|JDBC| OrderDB[(PostgreSQL<br/>order_db)]
     OrderService -->|payments.completed| Kafka
@@ -26,7 +26,7 @@ flowchart LR
 
 **Integration contracts**:
 - REST APIs documented through Swagger UI per service.
-- Kafka topics: `orders.created` (producer: customer service, consumer: order service) and `payments.completed` (producer: payment stub, consumer: order service), each with DLQ.
+- Kafka topics (provisioned on Redpanda as the preferred Kafka-compatible broker): `orders.created` (producer: customer service, consumer: order service) and `payments.completed` (producer: payment stub, consumer: order service), each with DLQ.
 - Cross-cutting concern propagation: `X-Correlation-ID` traced from ingress to events and logs.
 
 ## Key Capabilities
@@ -49,7 +49,7 @@ cd infrastructure
 docker-compose up -d
 docker-compose ps
 
-# Provision Kafka topics once containers are healthy
+# Provision Redpanda (preferred Kafka-compatible broker) topics once containers are healthy
 chmod +x kafka/create-topics.sh
 ./kafka/create-topics.sh
 ```
@@ -100,7 +100,7 @@ Testing adheres to the repository constitution: write failing tests first, then 
 Prometheus/Grafana configuration templates live under `infrastructure/prometheus/` and `infrastructure/grafana/` once those tasks are implemented.
 
 ## Troubleshooting Cheatsheet
-- **Kafka consumer lag**: inspect via `docker exec -it redpanda rpk group describe order-service-group` and follow runbook remediation.
+- **Kafka consumer lag**: inspect via `docker exec -it redpanda rpk group describe order-service-group` (Redpanda remains the preferred Kafka-compatible broker) and follow runbook remediation.
 - **Circuit breaker open**: check `/actuator/health` details and payment gateway reachability; monitor `resilience4j_circuitbreaker_state` metric.
 - **Idempotency conflicts**: verify the `CheckoutIdempotency` table; ensure clients reuse the `Idempotency-Key` header.
 - **Database migrations**: check Flyway history via `SELECT * FROM flyway_schema_history;` in each database.
