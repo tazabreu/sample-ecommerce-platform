@@ -1,7 +1,10 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.relational.core.mapping.Table;
+
+import java.time.Instant;
 
 /**
  * Entity for storing checkout idempotency records.
@@ -15,36 +18,24 @@ import java.time.LocalDateTime;
  *   <li>Replays with same key + different fingerprint return 422 Unprocessable Entity</li>
  * </ul>
  */
-@Entity
-@Table(name = "checkout_idempotency")
-public class CheckoutIdempotency {
+@Table("checkout_idempotency")
+public class CheckoutIdempotency implements StatefulPersistable<String> {
 
     @Id
-    @Column(name = "idempotency_key", length = 255, nullable = false)
     private String idempotencyKey;
 
-    @Column(name = "request_fingerprint", length = 64, nullable = false)
     private String requestFingerprint;
 
-    @Column(name = "response_status", nullable = false)
     private Integer responseStatus;
 
-    @Column(name = "response_body", columnDefinition = "TEXT", nullable = false)
     private String responseBody;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
-    @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        if (expiresAt == null) {
-            expiresAt = createdAt.plusHours(24);
-        }
-    }
+    @Transient
+    private boolean isNew = true;
 
     // Constructors
     public CheckoutIdempotency() {
@@ -90,19 +81,37 @@ public class CheckoutIdempotency {
         this.responseBody = responseBody;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+        if (expiresAt == null && createdAt != null) {
+            this.expiresAt = createdAt.plusSeconds(24 * 60 * 60L);
+        }
     }
 
-    public LocalDateTime getExpiresAt() {
+    public Instant getExpiresAt() {
         return expiresAt;
     }
 
-    public void setExpiresAt(LocalDateTime expiresAt) {
+    public void setExpiresAt(Instant expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    @Override
+    public String getId() {
+        return idempotencyKey;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 }

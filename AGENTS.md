@@ -53,6 +53,7 @@ Agents may be humans or automated assistants; responsibilities are about decisio
 - Prefer editing existing files using minimal diffs; do not reformat unrelated code.
 - Cite code using file:line snippets when proposing changes in discussions.
 - Maintain up-to-date `.env.example` files when environment variables are added/changed in application.yml files.
+ - Commits must follow the repository's established style. Before committing, review recent commits to understand message structure, scope conventions, and maintain consistency.
 
 ### References
 

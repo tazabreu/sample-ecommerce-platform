@@ -1,8 +1,8 @@
 package com.ecommerce.order.model;
 
-import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
-import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -36,24 +36,16 @@ import java.util.UUID;
  * processedEventRepository.save(new ProcessedEvent(event.getEventId(), event.getEventType()));
  * </pre>
  */
-@Entity
-@Table(name = "processed_events", indexes = {
-    @Index(name = "idx_processed_event_type", columnList = "event_type"),
-    @Index(name = "idx_processed_event_time", columnList = "processed_at")
-})
+@Table("processed_events")
 public class ProcessedEvent {
 
     @Id
     @NotNull(message = "Event ID is required")
-    @Column(name = "event_id", nullable = false)
     private UUID eventId;
 
     @NotNull(message = "Event type is required")
-    @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 
-    @CreationTimestamp
-    @Column(name = "processed_at", nullable = false, updatable = false)
     private Instant processedAt;
 
     // Constructors
@@ -80,6 +72,7 @@ public class ProcessedEvent {
 
         this.eventId = eventId;
         this.eventType = eventType;
+        this.processedAt = Instant.now();
     }
 
     // Getters
@@ -94,6 +87,10 @@ public class ProcessedEvent {
 
     public Instant getProcessedAt() {
         return processedAt;
+    }
+
+    public void setProcessedAt(Instant processedAt) {
+        this.processedAt = processedAt;
     }
 
     // Object methods
@@ -120,4 +117,3 @@ public class ProcessedEvent {
                 '}';
     }
 }
-

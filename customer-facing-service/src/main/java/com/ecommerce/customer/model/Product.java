@@ -1,10 +1,15 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -31,65 +36,45 @@ import java.util.UUID;
  *   <li>Category: Required, must reference existing category</li>
  * </ul>
  */
-@Entity
-@Table(name = "products", indexes = {
-    @Index(name = "idx_product_sku", columnList = "sku", unique = true),
-    @Index(name = "idx_product_category", columnList = "category_id"),
-    @Index(name = "idx_product_active", columnList = "is_active")
-})
-public class Product implements java.io.Serializable {
+@Table("products")
+public class Product implements Auditable, java.io.Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @NotNull(message = "SKU is required")
     @Pattern(regexp = "^[A-Z0-9-]+$", message = "SKU must contain only uppercase letters, digits, and hyphens")
     @Size(min = 1, max = 50, message = "SKU must be between 1 and 50 characters")
-    @Column(name = "sku", nullable = false, unique = true, length = 50)
     private String sku;
 
     @NotNull(message = "Product name is required")
     @Size(min = 1, max = 200, message = "Product name must be between 1 and 200 characters")
-    @Column(name = "name", nullable = false, length = 200)
     private String name;
 
     @Size(max = 5000, message = "Description must not exceed 5000 characters")
-    @Column(name = "description", length = 5000)
     private String description;
 
     @NotNull(message = "Price is required")
     @DecimalMin(value = "0.01", message = "Price must be at least 0.01")
     @Digits(integer = 8, fraction = 2, message = "Price must have at most 8 integer digits and 2 decimal places")
-    @Column(name = "price", nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
     @NotNull(message = "Inventory quantity is required")
     @Min(value = 0, message = "Inventory quantity must be non-negative")
-    @Column(name = "inventory_quantity", nullable = false)
     private Integer inventoryQuantity;
 
     @NotNull(message = "Category is required")
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "category_id", nullable = false, foreignKey = @ForeignKey(name = "fk_product_category"))
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private Category category;
+    private UUID categoryId;
 
-    @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
     @Version
-    @Column(name = "version", nullable = false)
-    private Long version = 0L;
+    private Long version;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     // Constructors
@@ -110,14 +95,14 @@ public class Product implements java.io.Serializable {
      * @param inventoryQuantity the initial inventory quantity (required, non-negative)
      * @param category          the product category (required)
      */
-    public Product(String sku, String name, String description, BigDecimal price, 
-                   Integer inventoryQuantity, Category category) {
+    public Product(String sku, String name, String description, BigDecimal price,
+                   Integer inventoryQuantity, UUID categoryId) {
         this.sku = sku;
         this.name = name;
         this.description = description;
         this.price = price;
         this.inventoryQuantity = inventoryQuantity;
-        this.category = category;
+        this.categoryId = categoryId;
         this.isActive = true;
     }
 
@@ -126,6 +111,11 @@ public class Product implements java.io.Serializable {
     public UUID getId() {
         return id;
     }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
 
     public String getSku() {
         return sku;
@@ -167,12 +157,12 @@ public class Product implements java.io.Serializable {
         this.inventoryQuantity = inventoryQuantity;
     }
 
-    public Category getCategory() {
-        return category;
+    public UUID getCategoryId() {
+        return categoryId;
     }
 
-    public void setCategory(Category category) {
-        this.category = category;
+    public void setCategoryId(UUID categoryId) {
+        this.categoryId = categoryId;
     }
 
     public Boolean getIsActive() {
@@ -187,12 +177,28 @@ public class Product implements java.io.Serializable {
         return version;
     }
 
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     // Business methods
@@ -298,4 +304,3 @@ public class Product implements java.io.Serializable {
                 '}';
     }
 }
-

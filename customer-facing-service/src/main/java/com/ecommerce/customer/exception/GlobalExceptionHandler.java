@@ -9,9 +9,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -66,6 +67,28 @@ public class GlobalExceptionHandler {
         problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
+    }
+
+    /**
+     * Handle missing request header exceptions (e.g., missing Idempotency-Key).
+     *
+     * @param ex the exception
+     * @param request the HTTP request
+     * @return 400 RFC 7807 Problem Detail response
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ProblemDetail> handleMissingRequestHeader(MissingRequestHeaderException ex, HttpServletRequest request) {
+        logger.warn("Missing required header: {}", ex.getHeaderName());
+
+        String detail = String.format("Missing required header '%s'", ex.getHeaderName());
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+        problem.setType(URI.create("https://api.ecommerce.com/problems/bad-request"));
+        problem.setTitle("Bad Request");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(CORRELATION_ID_KEY, MDC.get(CORRELATION_ID_KEY));
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**
@@ -165,8 +188,8 @@ public class GlobalExceptionHandler {
      * @param request the HTTP request
      * @return 409 RFC 7807 Problem Detail response
      */
-    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
-    public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex, HttpServletRequest request) {
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(OptimisticLockingFailureException ex, HttpServletRequest request) {
         logger.warn("Optimistic locking failure: {}", ex.getMessage());
 
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
@@ -306,5 +329,4 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 }
-
 

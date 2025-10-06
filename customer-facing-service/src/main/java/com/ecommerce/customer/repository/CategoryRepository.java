@@ -1,7 +1,7 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.Category;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -13,7 +13,7 @@ import java.util.UUID;
  * <p>Provides standard CRUD operations plus custom queries for category management.</p>
  */
 @Repository
-public interface CategoryRepository extends JpaRepository<Category, UUID> {
+public interface CategoryRepository extends CrudRepository<Category, UUID> {
 
     /**
      * Finds a category by its name.
@@ -31,4 +31,3 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
      */
     boolean existsByName(String name);
 }
-

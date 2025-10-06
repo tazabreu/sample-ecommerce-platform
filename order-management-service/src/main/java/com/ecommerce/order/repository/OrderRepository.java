@@ -4,8 +4,8 @@ import com.ecommerce.order.model.Order;
 import com.ecommerce.order.model.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -21,7 +21,17 @@ import java.util.UUID;
  * filtering, and analytics.</p>
  */
 @Repository
-public interface OrderRepository extends JpaRepository<Order, UUID> {
+public interface OrderRepository extends PagingAndSortingRepository<Order, UUID> {
+
+    /**
+     * Find order by ID.
+     */
+    Optional<Order> findById(UUID id);
+
+    /**
+     * Persist order explicitly (required in JDBC).
+     */
+    <S extends Order> S save(S entity);
 
     /**
      * Finds an order by its order number.
@@ -91,25 +101,36 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     /**
      * Finds orders using complex filtering criteria.
-     * This method demonstrates JPQL query construction for multiple optional filters.
+     * This method demonstrates SQL query construction for multiple optional filters.
+     *
+     * Note: Returns List instead of Page because Spring Data JDBC doesn't support
+     * Page return types with @Query string-based queries. Use Pageable for LIMIT/OFFSET.
+     *
+     * PostgreSQL Enum Handling: Accepts String for status parameter to avoid JDBC type inference
+     * issues with nullable enum parameters. The service layer converts OrderStatus enum to String.
+     * We compare the enum column as text for clean nullable parameter handling.
      *
      * @param customerEmail optional customer email filter (null to ignore)
-     * @param status        optional order status filter (null to ignore)
+     * @param statusString  optional order status filter as String (null to ignore)
      * @param startDate     optional start date filter (null to ignore)
      * @param endDate       optional end date filter (null to ignore)
-     * @param pageable      pagination information
-     * @return a page of orders matching the filters
+     * @param limit         maximum number of results
+     * @param offset        number of results to skip
+     * @return a list of orders matching the filters
      */
-    @Query("SELECT o FROM Order o WHERE " +
-           "(:customerEmail IS NULL OR o.customerEmail = :customerEmail) AND " +
-           "(:status IS NULL OR o.status = :status) AND " +
-           "(:startDate IS NULL OR o.createdAt >= :startDate) AND " +
-           "(:endDate IS NULL OR o.createdAt <= :endDate)")
-    Page<Order> findWithFilters(@Param("customerEmail") String customerEmail,
-                                 @Param("status") OrderStatus status,
+    @Query("SELECT * FROM orders WHERE " +
+           "(:customerEmail IS NULL OR customer_email = :customerEmail) AND " +
+           "(:statusString IS NULL OR status::text = :statusString) AND " +
+           "(:startDate::timestamp IS NULL OR created_at >= :startDate::timestamp) AND " +
+           "(:endDate::timestamp IS NULL OR created_at <= :endDate::timestamp) " +
+           "ORDER BY created_at DESC " +
+           "LIMIT :limit OFFSET :offset")
+    List<Order> findWithFilters(@Param("customerEmail") String customerEmail,
+                                 @Param("statusString") String statusString,
                                  @Param("startDate") Instant startDate,
                                  @Param("endDate") Instant endDate,
-                                 Pageable pageable);
+                                 @Param("limit") int limit,
+                                 @Param("offset") long offset);
 
     /**
      * Counts orders by status.
@@ -124,7 +145,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      *
      * @return a list of cancellable orders
      */
-    @Query("SELECT o FROM Order o WHERE o.status IN ('PENDING', 'PROCESSING')")
+    @Query("SELECT * FROM orders WHERE status IN ('PENDING', 'PROCESSING')")
     List<Order> findCancellableOrders();
 
     /**
@@ -132,16 +153,18 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
      *
      * @return a list of orders ready for fulfillment
      */
-    @Query("SELECT o FROM Order o WHERE o.status = 'PAID'")
+    @Query("SELECT * FROM orders WHERE status = 'PAID'")
     List<Order> findOrdersReadyForFulfillment();
 
     /**
      * Finds the most recent orders (for dashboard/analytics).
      *
+     * Note: Returns List instead of Page because Spring Data JDBC doesn't support
+     * Page return types with @Query string-based queries.
+     *
      * @param limit the maximum number of orders to return
      * @return a list of recent orders
      */
-    @Query("SELECT o FROM Order o ORDER BY o.createdAt DESC")
-    List<Order> findRecentOrders(Pageable pageable);
+    @Query("SELECT * FROM orders ORDER BY created_at DESC LIMIT :limit")
+    List<Order> findRecentOrders(@Param("limit") int limit);
 }
-

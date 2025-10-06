@@ -6,6 +6,7 @@ import com.ecommerce.order.dto.OrderItemDto;
 import com.ecommerce.order.dto.ShippingAddressDto;
 import com.ecommerce.order.model.Order;
 import com.ecommerce.order.model.OrderItem;
+import com.ecommerce.order.model.ShippingAddress;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
@@ -14,7 +15,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 
 /**
  * MapStruct mapper for Order and OrderItem entities and DTOs.
@@ -34,7 +34,7 @@ public abstract class OrderMapper {
      */
     @Mapping(target = "customerInfo", source = "order", qualifiedByName = "mapCustomerInfo")
     @Mapping(target = "status", expression = "java(order.getStatus().name())")
-    @Mapping(target = "paymentStatus", expression = "java(order.getPaymentTransaction() != null ? order.getPaymentTransaction().getStatus().name() : null)")
+    @Mapping(target = "paymentStatus", ignore = true)
     @Mapping(target = "createdAt", source = "createdAt", qualifiedByName = "instantToLocalDateTime")
     @Mapping(target = "updatedAt", source = "updatedAt", qualifiedByName = "instantToLocalDateTime")
     @Mapping(target = "completedAt", source = "completedAt", qualifiedByName = "instantToLocalDateTime")
@@ -80,41 +80,22 @@ public abstract class OrderMapper {
     }
 
     /**
-     * Convert JSONB Map to ShippingAddressDto.
+     * Convert ShippingAddress to ShippingAddressDto.
      *
-     * @param addressMap the address as a map
+     * @param shippingAddress the shipping address
      * @return the shipping address DTO
      */
-    protected ShippingAddressDto mapShippingAddress(Map<String, String> addressMap) {
-        if (addressMap == null) {
+    protected ShippingAddressDto mapShippingAddress(ShippingAddress shippingAddress) {
+        if (shippingAddress == null) {
             return null;
         }
         return new ShippingAddressDto(
-                addressMap.get("street"),
-                addressMap.get("city"),
-                addressMap.get("state"),
-                addressMap.get("postalCode"),
-                addressMap.get("country")
+                shippingAddress.getStreet(),
+                shippingAddress.getCity(),
+                shippingAddress.getState(),
+                shippingAddress.getPostalCode(),
+                shippingAddress.getCountry()
         );
     }
 
-    /**
-     * Convert ShippingAddressDto to JSONB Map.
-     *
-     * @param address the shipping address DTO
-     * @return the address as a map for JSONB storage
-     */
-    protected Map<String, String> mapShippingAddressToMap(ShippingAddressDto address) {
-        if (address == null) {
-            return null;
-        }
-        return Map.of(
-                "street", address.street(),
-                "city", address.city(),
-                "state", address.state(),
-                "postalCode", address.postalCode(),
-                "country", address.country()
-        );
-    }
 }
-

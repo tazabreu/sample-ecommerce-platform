@@ -17,7 +17,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Service for managing shopping carts.
@@ -93,42 +98,37 @@ public class CartService {
      * @param sessionId the session identifier
      * @return the cart
      */
-    @Transactional(readOnly = true)
     public Cart getCart(String sessionId) {
         logger.debug("Getting cart for session: {}", sessionId);
 
-        Cart cart = null;
-
         if (redisAvailable) {
             String redisKey = getRedisKey(sessionId);
-            cart = cartRedisTemplate.opsForValue().get(redisKey);
+            Cart cachedCart = cartRedisTemplate.opsForValue().get(redisKey);
 
-            if (cart != null) {
+            if (cachedCart != null) {
                 logger.debug("Cart found in Redis for session: {}", sessionId);
-                // Restore bidirectional relationships after deserialization
-                restoreCartRelationships(cart);
-                return cart;
+                cachedCart.initializeItems();
+                enrichCartItems(cachedCart);
+                return cachedCart;
             }
         }
 
         // Fall back to PostgreSQL
-        cart = cartRepository.findWithItemsBySessionId(sessionId).orElse(null);
+        Cart cart = cartRepository.findBySessionId(sessionId).orElse(null);
 
         if (cart != null && !cart.isExpired()) {
             logger.debug("Cart found in PostgreSQL for session: {}", sessionId);
             cart.initializeItems();
-            // Cache in Redis for future requests
+            enrichCartItems(cart);
             saveToRedis(cart);
             return cart;
         }
 
         // Create new cart if not found or expired
         logger.info("Creating new cart for session: {}", sessionId);
-        cart = new Cart(sessionId, CART_TTL_MINUTES);
-        cart = cartRepository.save(cart);
-        saveToRedis(cart);
-
-        return cart;
+        Cart newCart = new Cart(sessionId, CART_TTL_MINUTES);
+        newCart.initializeItems();
+        return persistAndCacheCart(newCart);
     }
 
     /**
@@ -168,7 +168,7 @@ public class CartService {
 
         // Check if adding this quantity would exceed available inventory
         CartItem existingItem = cart.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(productId))
+                .filter(item -> productId.equals(item.getProductId()))
                 .findFirst()
                 .orElse(null);
 
@@ -189,8 +189,7 @@ public class CartService {
         cart.addItem(product, quantity);
 
         // Save to both storages
-        cart = cartRepository.save(cart);
-        saveToRedis(cart);
+        cart = persistAndCacheCart(cart);
 
         // Increment cart items added metric
         cartItemsAddedCounter.increment();
@@ -224,7 +223,8 @@ public class CartService {
                 .orElseThrow(() -> new ResourceNotFoundException("CartItem", cartItemId));
 
         // Validate inventory availability
-        Product product = cartItem.getProduct();
+        Product product = productRepository.findById(cartItem.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException("Product", cartItem.getProductId()));
         if (product.getInventoryQuantity() < quantity) {
             throw new InsufficientInventoryException(
                     product.getId(), 
@@ -237,8 +237,7 @@ public class CartService {
         cart.updateItemQuantity(cartItemId, quantity);
 
         // Save to both storages
-        cart = cartRepository.save(cart);
-        saveToRedis(cart);
+        cart = persistAndCacheCart(cart);
 
         logger.info("Updated cart item - cart id: {}, new subtotal: {}", 
                 cart.getId(), cart.getSubtotal());
@@ -266,8 +265,7 @@ public class CartService {
         }
 
         // Save to both storages
-        cart = cartRepository.save(cart);
-        saveToRedis(cart);
+        cart = persistAndCacheCart(cart);
 
         logger.info("Removed cart item - cart id: {}, remaining items: {}", 
                 cart.getId(), cart.getTotalItemCount());
@@ -287,8 +285,7 @@ public class CartService {
         cart.clear();
 
         // Save to both storages
-        cartRepository.save(cart);
-        saveToRedis(cart);
+        persistAndCacheCart(cart);
 
         logger.info("Cleared cart - cart id: {}", cart.getId());
     }
@@ -308,8 +305,7 @@ public class CartService {
         }
 
         // Delete from PostgreSQL
-        cartRepository.findBySessionId(sessionId)
-                .ifPresent(cartRepository::delete);
+        cartRepository.deleteBySessionId(sessionId);
 
         logger.info("Deleted cart for session: {}", sessionId);
     }
@@ -336,16 +332,38 @@ public class CartService {
         logger.debug("Saved cart to Redis: {}", redisKey);
     }
 
-    /**
-     * Restore bidirectional relationships after deserializing from Redis.
-     * Since Cart.cart field is @JsonIgnore, it needs to be restored manually.
-     *
-     * @param cart the cart loaded from Redis
-     */
-    private void restoreCartRelationships(Cart cart) {
-        if (cart != null && cart.getItems() != null) {
-            cart.getItems().forEach(item -> item.setCart(cart));
+    private void enrichCartItems(Cart cart) {
+        if (cart == null) {
+            return;
         }
+        cart.initializeItems();
+        Set<UUID> productIds = cart.getItems().stream()
+                .map(CartItem::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (productIds.isEmpty()) {
+            return;
+        }
+
+        Map<UUID, Product> productMap = new HashMap<>();
+        productRepository.findAllById(productIds).forEach(product -> productMap.put(product.getId(), product));
+
+        cart.getItems().forEach(item -> {
+            Product product = productMap.get(item.getProductId());
+            if (product != null) {
+                item.setProductSku(product.getSku());
+                item.setProductName(product.getName());
+            }
+        });
+    }
+
+    private Cart persistAndCacheCart(Cart cart) {
+        cart.initializeItems();
+        Cart saved = cartRepository.save(cart);
+        enrichCartItems(saved);
+        saveToRedis(saved);
+        return saved;
     }
 
     /**
@@ -358,5 +376,3 @@ public class CartService {
         return CART_REDIS_KEY_PREFIX + sessionId;
     }
 }
-
-

@@ -6,11 +6,13 @@ import com.ecommerce.order.model.OrderStatus;
 import com.ecommerce.order.model.PaymentStatus;
 import com.ecommerce.order.model.PaymentTransaction;
 import com.ecommerce.order.model.ProcessedEvent;
+import com.ecommerce.order.model.ShippingAddress;
 import com.ecommerce.order.payment.PaymentException;
 import com.ecommerce.order.payment.PaymentRequest;
 import com.ecommerce.order.payment.PaymentResult;
 import com.ecommerce.order.payment.PaymentService;
 import com.ecommerce.order.repository.OrderRepository;
+import com.ecommerce.order.repository.PaymentTransactionRepository;
 import com.ecommerce.order.repository.ProcessedEventRepository;
 import com.ecommerce.shared.event.CustomerEvent;
 import com.ecommerce.shared.event.OrderCreatedEvent;
@@ -28,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +54,9 @@ class OrderProcessingServiceTest {
 
     @Mock
     private ProcessedEventRepository processedEventRepository;
+
+    @Mock
+    private PaymentTransactionRepository paymentTransactionRepository;
 
     @Mock
     private PaymentService paymentService;
@@ -79,10 +85,18 @@ class OrderProcessingServiceTest {
         orderProcessingService = spy(new OrderProcessingService(
                 orderRepository,
                 processedEventRepository,
+                paymentTransactionRepository,
                 paymentService,
                 paymentCompletedService
         ));
-        lenient().doNothing().when(orderProcessingService).processPaymentAsync(any(Order.class));
+        lenient().doNothing().when(orderProcessingService).processPaymentAsync(any(UUID.class), any(UUID.class));
+        lenient().when(paymentTransactionRepository.save(any(PaymentTransaction.class))).thenAnswer(invocation -> {
+            PaymentTransaction transaction = invocation.getArgument(0);
+            if (transaction.getId() == null) {
+                transaction.setId(UUID.randomUUID());
+            }
+            return transaction;
+        });
 
         eventId = UUID.randomUUID();
         orderId = UUID.randomUUID();
@@ -154,8 +168,17 @@ class OrderProcessingServiceTest {
         assertThat(savedOrder.getStatus()).isEqualTo(OrderStatus.PENDING);
         assertThat(savedOrder.getCustomerEmail()).isEqualTo(customer.email());
         assertThat(savedOrder.getItems()).hasSize(1);
-        assertThat(savedOrder.getShippingAddress()).containsEntry("street", "123 Main St");
-        assertThat(savedOrder.getPaymentTransaction()).isNotNull();
+        assertThat(savedOrder.getShippingAddress().getStreet()).isEqualTo("123 Main St");
+
+        ArgumentCaptor<PaymentTransaction> transactionCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        verify(paymentTransactionRepository).save(transactionCaptor.capture());
+        PaymentTransaction savedTransaction = transactionCaptor.getValue();
+
+        assertThat(savedTransaction.getOrderId()).isEqualTo(savedOrder.getId());
+        assertThat(savedTransaction.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(savedTransaction.getAmount()).isEqualByComparingTo(orderSubtotal);
+
+        verify(orderProcessingService).processPaymentAsync(eq(savedOrder.getId()), eq(savedTransaction.getId()));
     }
 
     @Test
@@ -166,7 +189,7 @@ class OrderProcessingServiceTest {
 
         verify(orderRepository, never()).save(any(Order.class));
         verify(processedEventRepository, never()).save(any(ProcessedEvent.class));
-        verify(orderProcessingService, never()).processPaymentAsync(any(Order.class));
+        verify(orderProcessingService, never()).processPaymentAsync(any(UUID.class), any(UUID.class));
     }
 
     @Test
@@ -180,12 +203,14 @@ class OrderProcessingServiceTest {
         verify(orderRepository, atLeastOnce()).save(orderCaptor.capture());
         Order savedOrder = orderCaptor.getValue();
 
-        PaymentTransaction transaction = savedOrder.getPaymentTransaction();
-        assertThat(transaction).isNotNull();
+        ArgumentCaptor<PaymentTransaction> transactionCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+        verify(paymentTransactionRepository).save(transactionCaptor.capture());
+        PaymentTransaction transaction = transactionCaptor.getValue();
+
+        assertThat(transaction.getOrderId()).isEqualTo(savedOrder.getId());
         assertThat(transaction.getStatus()).isEqualTo(PaymentStatus.PENDING);
         assertThat(transaction.getAmount()).isEqualByComparingTo(orderSubtotal);
         assertThat(transaction.getPaymentMethod()).isEqualTo("MOCK");
-        assertThat(transaction.getOrder()).isEqualTo(savedOrder);
     }
 
     @Test
@@ -225,9 +250,9 @@ class OrderProcessingServiceTest {
         assertThat(savedOrder.getCustomerName()).isEqualTo(customer.name());
         assertThat(savedOrder.getCustomerEmail()).isEqualTo(customer.email());
         assertThat(savedOrder.getCustomerPhone()).isEqualTo(customer.phone());
-        assertThat(savedOrder.getShippingAddress()).containsEntry("city", "Anytown");
-        assertThat(savedOrder.getShippingAddress()).containsEntry("postalCode", "12345");
-        assertThat(savedOrder.getShippingAddress()).containsEntry("country", "USA");
+        assertThat(savedOrder.getShippingAddress().getCity()).isEqualTo("Anytown");
+        assertThat(savedOrder.getShippingAddress().getPostalCode()).isEqualTo("12345");
+        assertThat(savedOrder.getShippingAddress().getCountry()).isEqualTo("USA");
     }
 
     @Test
@@ -282,6 +307,7 @@ class OrderProcessingServiceTest {
         OrderProcessingService service = new OrderProcessingService(
                 orderRepository,
                 processedEventRepository,
+                paymentTransactionRepository,
                 paymentService,
                 paymentCompletedService
         );
@@ -291,22 +317,22 @@ class OrderProcessingServiceTest {
                 customer.name(),
                 customer.email(),
                 customer.phone(),
-                Map.of(
-                        "street", "123 Main St",
-                        "city", "Anytown",
-                        "state", "CA",
-                        "postalCode", "12345",
-                        "country", "USA"
-                ),
+                new ShippingAddress("123 Main St", "Anytown", "CA", "12345", "USA"),
                 orderSubtotal
         );
         ReflectionTestUtils.setField(order, "id", orderId);
 
+        UUID paymentTransactionId = UUID.randomUUID();
+        PaymentTransaction transaction = new PaymentTransaction(orderId, orderSubtotal, "MOCK");
+        transaction.setId(paymentTransactionId);
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(paymentTransactionRepository.findById(paymentTransactionId)).thenReturn(Optional.of(transaction));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
         PaymentResult paymentResult = PaymentResult.success("txn_123");
         when(paymentService.processPayment(any(PaymentRequest.class))).thenReturn(paymentResult);
 
-        service.processPaymentAsync(order);
+        service.processPaymentAsync(orderId, paymentTransactionId);
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PROCESSING);
 
@@ -318,7 +344,8 @@ class OrderProcessingServiceTest {
         assertThat(capturedRequest.amount()).isEqualByComparingTo(orderSubtotal);
 
         verify(orderRepository).save(order);
-        verify(paymentCompletedService).publishPaymentCompleted(order, paymentResult);
+        verify(paymentCompletedService).publishPaymentCompleted(order, transaction, paymentResult);
+        verify(paymentTransactionRepository, never()).save(any(PaymentTransaction.class));
     }
 
     @Test
@@ -326,6 +353,7 @@ class OrderProcessingServiceTest {
         OrderProcessingService service = new OrderProcessingService(
                 orderRepository,
                 processedEventRepository,
+                paymentTransactionRepository,
                 paymentService,
                 paymentCompletedService
         );
@@ -335,33 +363,35 @@ class OrderProcessingServiceTest {
                 customer.name(),
                 customer.email(),
                 customer.phone(),
-                Map.of(
-                        "street", "123 Main St",
-                        "city", "Anytown",
-                        "state", "CA",
-                        "postalCode", "12345",
-                        "country", "USA"
-                ),
+                new ShippingAddress("123 Main St", "Anytown", "CA", "12345", "USA"),
                 orderSubtotal
         );
         ReflectionTestUtils.setField(order, "id", orderId);
 
+        UUID paymentTransactionId = UUID.randomUUID();
+        PaymentTransaction transaction = new PaymentTransaction(orderId, orderSubtotal, "MOCK");
+        transaction.setId(paymentTransactionId);
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(paymentTransactionRepository.findById(paymentTransactionId)).thenReturn(Optional.of(transaction));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
         PaymentException paymentException = new PaymentException("Payment gateway timeout");
         when(paymentService.processPayment(any(PaymentRequest.class))).thenThrow(paymentException);
 
-        service.processPaymentAsync(order);
+        service.processPaymentAsync(orderId, paymentTransactionId);
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PROCESSING);
+        assertThat(transaction.getAttemptCount()).isEqualTo(2);
 
         ArgumentCaptor<PaymentResult> paymentResultCaptor = ArgumentCaptor.forClass(PaymentResult.class);
-        verify(paymentCompletedService).publishPaymentCompleted(eq(order), paymentResultCaptor.capture());
+        verify(paymentCompletedService).publishPaymentCompleted(eq(order), eq(transaction), paymentResultCaptor.capture());
         PaymentResult result = paymentResultCaptor.getValue();
         assertThat(result.success()).isFalse();
         assertThat(result.failureReason()).isEqualTo("Payment gateway timeout");
 
         verify(orderRepository).save(order);
         verify(paymentService).processPayment(any(PaymentRequest.class));
+        verify(paymentTransactionRepository).save(transaction);
     }
 
     private void mockOrderRepositorySave() {

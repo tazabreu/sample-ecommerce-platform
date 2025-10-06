@@ -2,11 +2,11 @@ package com.ecommerce.customer;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.data.jdbc.repository.config.EnableJdbcRepositories;
 import org.springframework.kafka.annotation.EnableKafka;
 
 @SpringBootApplication
-@EnableJpaRepositories
+@EnableJdbcRepositories
 @EnableKafka
 public class CustomerFacingServiceApplication {
 
@@ -14,4 +14,3 @@ public class CustomerFacingServiceApplication {
         SpringApplication.run(CustomerFacingServiceApplication.class, args);
     }
 }
-

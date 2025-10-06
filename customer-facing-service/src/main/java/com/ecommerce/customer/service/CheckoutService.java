@@ -19,17 +19,17 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
-import jakarta.persistence.LockModeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -135,14 +135,15 @@ public class CheckoutService {
                 logger.info("Generated order - orderNumber: {}, orderId: {}", orderNumber, orderId);
 
                 // 3. Decrement inventory with pessimistic locking
-                decrementInventory(cart);
+                Map<UUID, Product> lockedProducts = decrementInventory(cart);
 
                 // 4. Create OrderCreatedEvent and write to outbox
                 OrderCreatedEvent event = createOrderCreatedEvent(
                         orderId,
                         orderNumber,
                         cart,
-                        customerInfo
+                        customerInfo,
+                        lockedProducts
                 );
 
                 writeToOutbox(orderId, event);
@@ -179,20 +180,22 @@ public class CheckoutService {
      * @param cart the cart with items to process
      * @throws InsufficientInventoryException if any product has insufficient inventory
      */
-    private void decrementInventory(Cart cart) {
+    private Map<UUID, Product> decrementInventory(Cart cart) {
         logger.debug("Decrementing inventory for {} items", cart.getItems().size());
 
+        Map<UUID, Product> lockedProducts = new HashMap<>();
+
         for (CartItem cartItem : cart.getItems()) {
-            Product product = cartItem.getProduct();
+            UUID productId = cartItem.getProductId();
             int requestedQuantity = cartItem.getQuantity();
 
             // Reload product with pessimistic write lock
-            Product lockedProduct = productRepository.findByIdWithLock(product.getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product", product.getId()));
+            Product lockedProduct = productRepository.findByIdWithLock(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
 
             // Validate inventory availability
             if (lockedProduct.getInventoryQuantity() < requestedQuantity) {
-                logger.error("Insufficient inventory - productId: {}, requested: {}, available: {}", 
+                logger.error("Insufficient inventory - productId: {}, requested: {}, available: {}",
                         lockedProduct.getId(), requestedQuantity, lockedProduct.getInventoryQuantity());
                 throw new InsufficientInventoryException(
                         lockedProduct.getId(),
@@ -201,19 +204,16 @@ public class CheckoutService {
                 );
             }
 
-            // Decrement inventory
-            int newQuantity = lockedProduct.getInventoryQuantity() - requestedQuantity;
-            lockedProduct.setInventoryQuantity(newQuantity);
+            lockedProduct.decrementInventory(requestedQuantity);
             productRepository.save(lockedProduct);
+            lockedProducts.put(productId, lockedProduct);
 
-            logger.debug("Decremented inventory - productId: {}, sku: {}, old: {}, new: {}", 
-                    lockedProduct.getId(), 
-                    lockedProduct.getSku(), 
-                    lockedProduct.getInventoryQuantity() + requestedQuantity, 
-                    newQuantity);
+            logger.debug("Decremented inventory - productId: {}, sku: {}, remaining: {}",
+                    lockedProduct.getId(), lockedProduct.getSku(), lockedProduct.getInventoryQuantity());
         }
 
         logger.info("Successfully decremented inventory for all cart items");
+        return lockedProducts;
     }
 
     /**
@@ -229,7 +229,8 @@ public class CheckoutService {
             UUID orderId,
             String orderNumber,
             Cart cart,
-            CustomerInfoDto customerInfo
+            CustomerInfoDto customerInfo,
+            Map<UUID, Product> productLookup
     ) {
         // Get correlation ID from MDC or generate new one
         String correlationId = MDC.get("correlationId");
@@ -240,14 +241,21 @@ public class CheckoutService {
 
         // Map cart items to order item events
         List<OrderItemEvent> orderItems = cart.getItems().stream()
-                .map(cartItem -> new OrderItemEvent(
-                        cartItem.getProduct().getId(),
-                        cartItem.getProduct().getSku(),
-                        cartItem.getProduct().getName(),
-                        cartItem.getQuantity(),
-                        cartItem.getPriceSnapshot(),
-                        cartItem.getSubtotal()
-                ))
+                .map(cartItem -> {
+                    Product product = productLookup.get(cartItem.getProductId());
+                    if (product == null) {
+                        product = productRepository.findById(cartItem.getProductId())
+                                .orElseThrow(() -> new ResourceNotFoundException("Product", cartItem.getProductId()));
+                    }
+                    return new OrderItemEvent(
+                            product.getId(),
+                            product.getSku(),
+                            product.getName(),
+                            cartItem.getQuantity(),
+                            cartItem.getPriceSnapshot(),
+                            cartItem.getSubtotal()
+                    );
+                })
                 .collect(Collectors.toList());
 
         // Map customer info to customer event
@@ -287,10 +295,23 @@ public class CheckoutService {
             String payload = objectMapper.writeValueAsString(event);
 
             OrderCreatedOutbox outbox = new OrderCreatedOutbox(orderId, payload);
-            outboxRepository.save(outbox);
+            UUID outboxId = UUID.randomUUID();
+            outbox.setId(outboxId);
+
+            // Use custom insert method with JSONB cast
+            outboxRepository.insertOutbox(
+                outboxId,
+                outbox.getAggregateId(),
+                outbox.getAggregateType(),
+                outbox.getEventType(),
+                payload,
+                outbox.getCreatedAt(),
+                outbox.getStatus().name(),
+                outbox.getRetryCount()
+            );
 
             logger.info("Wrote OrderCreatedEvent to outbox - orderId: {}, outboxId: {}",
-                    orderId, outbox.getId());
+                    orderId, outboxId);
 
         } catch (JsonProcessingException e) {
             logger.error("Failed to serialize OrderCreatedEvent to JSON - orderId: {}", orderId, e);
@@ -298,5 +319,3 @@ public class CheckoutService {
         }
     }
 }
-
-

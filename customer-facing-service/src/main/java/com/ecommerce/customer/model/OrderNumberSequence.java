@@ -1,7 +1,10 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.relational.core.mapping.Table;
+
+import java.time.Instant;
 
 /**
  * Entity for storing daily order number sequences.
@@ -13,33 +16,20 @@ import java.time.LocalDateTime;
  *   <li>last_sequence: Incremental counter that resets daily</li>
  * </ul>
  */
-@Entity
-@Table(name = "order_number_sequence")
-public class OrderNumberSequence {
+@Table("order_number_sequence")
+public class OrderNumberSequence implements Auditable, StatefulPersistable<String> {
 
     @Id
-    @Column(name = "date_key", length = 8, nullable = false)
     private String dateKey;
 
-    @Column(name = "last_sequence", nullable = false)
     private Integer lastSequence = 0;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    @Transient
+    private boolean isNew = true;
 
     // Constructors
     public OrderNumberSequence() {
@@ -67,19 +57,38 @@ public class OrderNumberSequence {
         this.lastSequence = lastSequence;
     }
 
-    public LocalDateTime getCreatedAt() {
+    @Override
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    @Override
+    public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
 
-    public LocalDateTime getUpdatedAt() {
+    @Override
+    public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    @Override
+    public String getId() {
+        return dateKey;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
     }
 }

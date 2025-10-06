@@ -7,6 +7,7 @@ import com.ecommerce.order.model.PaymentStatus;
 import com.ecommerce.order.model.PaymentTransaction;
 import com.ecommerce.order.payment.PaymentResult;
 import com.ecommerce.order.repository.OrderRepository;
+import com.ecommerce.order.repository.PaymentTransactionRepository;
 import com.ecommerce.order.repository.ProcessedEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,15 +54,18 @@ public class PaymentCompletedService {
     private final KafkaTemplate<String, PaymentCompletedEvent> kafkaTemplate;
     private final OrderRepository orderRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
     public PaymentCompletedService(
             KafkaTemplate<String, PaymentCompletedEvent> kafkaTemplate,
             OrderRepository orderRepository,
-            ProcessedEventRepository processedEventRepository
+            ProcessedEventRepository processedEventRepository,
+            PaymentTransactionRepository paymentTransactionRepository
     ) {
         this.kafkaTemplate = kafkaTemplate;
         this.orderRepository = orderRepository;
         this.processedEventRepository = processedEventRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
     /**
@@ -70,13 +74,11 @@ public class PaymentCompletedService {
      * @param order the order
      * @param paymentResult the payment result
      */
-    public void publishPaymentCompleted(Order order, PaymentResult paymentResult) {
+    public void publishPaymentCompleted(Order order, PaymentTransaction transaction, PaymentResult paymentResult) {
         String correlationId = MDC.get("correlationId");
         if (correlationId == null) {
             correlationId = "payment-" + order.getOrderNumber();
         }
-
-        PaymentTransaction transaction = order.getPaymentTransaction();
         
         PaymentCompletedEvent event = new PaymentCompletedEvent(
                 correlationId,
@@ -180,12 +182,10 @@ public class PaymentCompletedService {
                         "Order not found for PaymentCompletedEvent: " + event.orderNumber()
                 ));
 
-        PaymentTransaction transaction = order.getPaymentTransaction();
-        if (transaction == null) {
-            throw new IllegalStateException(
-                    "PaymentTransaction not found for order: " + event.orderNumber()
-            );
-        }
+        PaymentTransaction transaction = paymentTransactionRepository.findById(event.paymentTransactionId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "PaymentTransaction not found: " + event.paymentTransactionId()
+                ));
 
         boolean isSuccess = "SUCCESS".equals(event.status());
 
@@ -198,6 +198,8 @@ public class PaymentCompletedService {
             logger.warn("Payment failed - orderNumber: {}, reason: {}",
                     order.getOrderNumber(), event.failureReason());
         }
+
+        paymentTransactionRepository.save(transaction);
 
         // 4. Update Order status
         if (isSuccess) {
@@ -219,4 +221,3 @@ public class PaymentCompletedService {
                 event.eventId(), event.orderNumber());
     }
 }
-

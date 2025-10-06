@@ -9,12 +9,11 @@ spring:
     virtual:
       enabled: true
 
+  data:
+    jdbc:
+      repositories:
+        enabled: true
 
-# Server Configuration
-server:
-  port: 8081
-  shutdown: graceful
-  
   # Database Configuration
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:order_db}
@@ -27,23 +26,7 @@ server:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-  
-  # JPA Configuration
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-        use_sql_comments: true
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
-    open-in-view: false
-  
+
   # Flyway Configuration
   flyway:
     enabled: true
@@ -75,6 +58,11 @@ server:
     listener:
       ack-mode: manual
       concurrency: 3
+
+# Server Configuration
+server:
+  port: 8081
+  shutdown: graceful
 
 # Actuator Configuration
 management:
@@ -145,8 +133,6 @@ logging:
     org.springframework.web: INFO
     org.springframework.security: INFO
     org.springframework.kafka: INFO
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 # SpringDoc OpenAPI Configuration
 springdoc:

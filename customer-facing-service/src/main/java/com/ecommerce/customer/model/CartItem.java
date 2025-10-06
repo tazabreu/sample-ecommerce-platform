@@ -1,11 +1,12 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,55 +37,37 @@ import java.util.UUID;
  *   <li>Many-to-One: Many cart items reference one product</li>
  * </ul>
  */
-@Entity
-@Table(name = "cart_items",
-    indexes = {
-        @Index(name = "idx_cartitem_cart", columnList = "cart_id"),
-        @Index(name = "idx_cartitem_product", columnList = "product_id")
-    },
-    uniqueConstraints = {
-        @UniqueConstraint(name = "uk_cart_product", columnNames = {"cart_id", "product_id"})
-    }
-)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class CartItem implements java.io.Serializable {
+@Table("cart_items")
+public class CartItem implements Auditable, java.io.Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @NotNull(message = "Cart is required")
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "cart_id", nullable = false, foreignKey = @ForeignKey(name = "fk_cartitem_cart"))
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private Cart cart;
-
-    @NotNull(message = "Product is required")
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", nullable = false, foreignKey = @ForeignKey(name = "fk_cartitem_product"))
-    private Product product;
+    @NotNull(message = "Product ID is required")
+    @Column("product_id")
+    private UUID productId;
 
     @NotNull(message = "Quantity is required")
     @Min(value = 1, message = "Quantity must be at least 1")
-    @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
     @NotNull(message = "Price snapshot is required")
-    @Column(name = "price_snapshot", nullable = false, precision = 10, scale = 2)
     private BigDecimal priceSnapshot;
 
-    @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Transient
+    private String productSku;
+
+    @Transient
+    private String productName;
 
     // Constructors
 
@@ -102,12 +85,9 @@ public class CartItem implements java.io.Serializable {
      * @param quantity      the item quantity (required, positive)
      * @param priceSnapshot the product price at time of adding (required)
      */
-    public CartItem(Cart cart, Product product, int quantity, BigDecimal priceSnapshot) {
-        if (cart == null) {
-            throw new IllegalArgumentException("Cart cannot be null");
-        }
-        if (product == null) {
-            throw new IllegalArgumentException("Product cannot be null");
+    public CartItem(UUID productId, int quantity, BigDecimal priceSnapshot) {
+        if (productId == null) {
+            throw new IllegalArgumentException("Product ID cannot be null");
         }
         if (quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be positive");
@@ -116,8 +96,7 @@ public class CartItem implements java.io.Serializable {
             throw new IllegalArgumentException("Price snapshot must be positive");
         }
 
-        this.cart = cart;
-        this.product = product;
+        this.productId = productId;
         this.quantity = quantity;
         this.priceSnapshot = priceSnapshot;
         this.subtotal = calculateSubtotal();
@@ -129,20 +108,17 @@ public class CartItem implements java.io.Serializable {
         return id;
     }
 
-    public Cart getCart() {
-        return cart;
+    public void setId(UUID id) {
+        this.id = id;
     }
 
-    public void setCart(Cart cart) {
-        this.cart = cart;
+
+    public UUID getProductId() {
+        return productId;
     }
 
-    public Product getProduct() {
-        return product;
-    }
-
-    public void setProduct(Product product) {
-        this.product = product;
+    public void setProductId(UUID productId) {
+        this.productId = productId;
     }
 
     public Integer getQuantity() {
@@ -170,12 +146,42 @@ public class CartItem implements java.io.Serializable {
         return subtotal;
     }
 
+    @Transient
+    public String getProductSku() {
+        return productSku;
+    }
+
+    public void setProductSku(String productSku) {
+        this.productSku = productSku;
+    }
+
+    @Transient
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     // Business methods
@@ -207,33 +213,6 @@ public class CartItem implements java.io.Serializable {
         this.subtotal = calculateSubtotal();
     }
 
-    /**
-     * Returns the product SKU for convenience.
-     *
-     * @return the product SKU
-     */
-    public String getProductSku() {
-        return product != null ? product.getSku() : null;
-    }
-
-    /**
-     * Returns the product name for convenience.
-     *
-     * @return the product name
-     */
-    public String getProductName() {
-        return product != null ? product.getName() : null;
-    }
-
-    /**
-     * Checks if the price snapshot matches the current product price.
-     *
-     * @return true if prices match, false otherwise
-     */
-    public boolean isPriceUpToDate() {
-        return product != null && priceSnapshot.compareTo(product.getPrice()) == 0;
-    }
-
     // Object methods
 
     @Override
@@ -253,8 +232,7 @@ public class CartItem implements java.io.Serializable {
     public String toString() {
         return "CartItem{" +
                 "id=" + id +
-                ", productSku='" + getProductSku() + '\'' +
-                ", productName='" + getProductName() + '\'' +
+                ", productId=" + productId +
                 ", quantity=" + quantity +
                 ", priceSnapshot=" + priceSnapshot +
                 ", subtotal=" + subtotal +
@@ -263,4 +241,3 @@ public class CartItem implements java.io.Serializable {
                 '}';
     }
 }
-

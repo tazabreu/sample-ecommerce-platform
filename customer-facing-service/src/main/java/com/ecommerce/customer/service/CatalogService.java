@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
  * Service for managing product catalog (categories and products).
@@ -61,6 +63,7 @@ public class CatalogService {
         logger.info("Creating category: {}", request.name());
         
         Category category = categoryMapper.toEntity(request);
+        category.setId(UUID.randomUUID());
         Category savedCategory = categoryRepository.save(category);
         
         logger.info("Created category with id: {}", savedCategory.getId());
@@ -118,7 +121,8 @@ public class CatalogService {
     @Transactional(readOnly = true)
     public List<Category> listCategories() {
         logger.debug("Listing all categories");
-        return categoryRepository.findAll();
+        return StreamSupport.stream(categoryRepository.findAll().spliterator(), false)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -147,8 +151,8 @@ public class CatalogService {
     public Product createProduct(CreateProductRequest request) {
         logger.info("Creating product with SKU: {}", request.sku());
         
-        // Validate category exists
-        Category category = getCategoryById(request.categoryId());
+        // Validate category exists without loading aggregate
+        validateCategoryExists(request.categoryId());
         
         // Check SKU uniqueness
         if (productRepository.existsBySku(request.sku())) {
@@ -156,7 +160,7 @@ public class CatalogService {
         }
         
         Product product = productMapper.toEntity(request);
-        product.setCategory(category);
+        product.setCategoryId(request.categoryId());
         Product savedProduct = productRepository.save(product);
         
         logger.info("Created product with id: {}", savedProduct.getId());
@@ -177,9 +181,9 @@ public class CatalogService {
         Product product = getProductById(productId);
         
         // If category is being updated, validate it exists
-        if (request.categoryId() != null && !request.categoryId().equals(product.getCategory().getId())) {
-            Category newCategory = getCategoryById(request.categoryId());
-            product.setCategory(newCategory);
+        if (request.categoryId() != null && !request.categoryId().equals(product.getCategoryId())) {
+            validateCategoryExists(request.categoryId());
+            product.setCategoryId(request.categoryId());
         }
         
         productMapper.updateEntityFromDto(request, product);
@@ -242,6 +246,10 @@ public class CatalogService {
         return productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
     }
+
+    private void validateCategoryExists(UUID categoryId) {
+        if (!categoryRepository.existsById(categoryId)) {
+            throw new ResourceNotFoundException("Category", categoryId);
+        }
+    }
 }
-
-

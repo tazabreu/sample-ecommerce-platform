@@ -1,20 +1,20 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.CheckoutIdempotency;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Modifying;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
  * Repository for checkout idempotency operations.
  */
 @Repository
-public interface CheckoutIdempotencyRepository extends JpaRepository<CheckoutIdempotency, String> {
+public interface CheckoutIdempotencyRepository extends CrudRepository<CheckoutIdempotency, String> {
 
     /**
      * Find idempotency record by key that hasn't expired.
@@ -23,10 +23,10 @@ public interface CheckoutIdempotencyRepository extends JpaRepository<CheckoutIde
      * @param now current timestamp
      * @return the idempotency record, if found and not expired
      */
-    @Query("SELECT ci FROM CheckoutIdempotency ci WHERE ci.idempotencyKey = :key AND ci.expiresAt > :now")
+    @Query("SELECT * FROM checkout_idempotency WHERE idempotency_key = :key AND expires_at > :now")
     Optional<CheckoutIdempotency> findByIdempotencyKeyAndNotExpired(
             @Param("key") String idempotencyKey,
-            @Param("now") LocalDateTime now
+            @Param("now") Instant now
     );
 
     /**
@@ -37,6 +37,6 @@ public interface CheckoutIdempotencyRepository extends JpaRepository<CheckoutIde
      * @return number of deleted records
      */
     @Modifying
-    @Query("DELETE FROM CheckoutIdempotency ci WHERE ci.expiresAt <= :now")
-    int deleteExpiredRecords(@Param("now") LocalDateTime now);
+    @Query("DELETE FROM checkout_idempotency WHERE expires_at <= :now")
+    int deleteExpiredRecords(@Param("now") Instant now);
 }

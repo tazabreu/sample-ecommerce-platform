@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 
@@ -57,7 +57,7 @@ public class IdempotencyService {
         String fingerprint = generateFingerprint(requestBody);
 
         Optional<CheckoutIdempotency> existing = idempotencyRepository
-                .findByIdempotencyKeyAndNotExpired(idempotencyKey, LocalDateTime.now());
+                .findByIdempotencyKeyAndNotExpired(idempotencyKey, Instant.now());
 
         if (existing.isEmpty()) {
             logger.debug("No idempotency record found for key: {}", idempotencyKey);
@@ -109,6 +109,10 @@ public class IdempotencyService {
                     serializedResponse
             );
 
+            // Set createdAt manually since CheckoutIdempotency doesn't implement Auditable
+            // This also auto-sets expiresAt via the setter logic
+            record.setCreatedAt(java.time.Instant.now());
+
             idempotencyRepository.save(record);
 
             logger.info("Stored idempotency record for key: {}, expires in {}h",
@@ -147,7 +151,7 @@ public class IdempotencyService {
      */
     @Transactional
     public int cleanupExpiredRecords() {
-        int deleted = idempotencyRepository.deleteExpiredRecords(LocalDateTime.now());
+        int deleted = idempotencyRepository.deleteExpiredRecords(Instant.now());
         if (deleted > 0) {
             logger.info("Cleaned up {} expired idempotency records", deleted);
         }
