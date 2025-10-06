@@ -2011,9 +2011,11 @@ def test_checkout_interactive():
     email = Prompt.ask("Customer email", default="john.doe@example.com")
     
     print_step("POST /api/v1/checkout")
+    # Add Idempotency-Key header as required by API
     response, success = api_call(
         "POST",
         f"{CUSTOMER_SERVICE_URL}/api/v1/checkout",
+        headers={"Idempotency-Key": f"{uuid.uuid4()}"},
         json={
             "sessionId": session_id,
             "customerInfo": {
@@ -2328,9 +2330,11 @@ def test_checkout_impl():
         }
     }
     
+    # Add Idempotency-Key header as required by API
     response, _ = api_call(
         "POST",
         f"{CUSTOMER_SERVICE_URL}/api/v1/checkout",
+        headers={"Idempotency-Key": f"{uuid.uuid4()}"},
         json=checkout_data
     )
     

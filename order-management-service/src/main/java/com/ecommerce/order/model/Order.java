@@ -1,33 +1,21 @@
 package com.ecommerce.order.model;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.ForeignKey;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UpdateTimestamp;
-import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.MappedCollection;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,7 +26,7 @@ import java.util.UUID;
  *   <li>State machine with defined transitions (see OrderStatus)</li>
  *   <li>Denormalized customer info (guest checkout, no FK to customer table)</li>
  *   <li>JSONB storage for shipping address (flexible schema)</li>
- *   <li>One-to-One relationship with PaymentTransaction</li>
+ *   <li>PaymentTransaction tracked as separate aggregate (retrieved via repository)</li>
  * </ul>
  * 
  * <p>Validation Rules:</p>
@@ -51,68 +39,47 @@ import java.util.UUID;
  *   <li>Subtotal: Required, positive decimal</li>
  * </ul>
  */
-@Entity
-@Table(name = "orders", indexes = {
-    @Index(name = "idx_order_number", columnList = "order_number", unique = true),
-    @Index(name = "idx_order_status", columnList = "status"),
-    @Index(name = "idx_order_created", columnList = "created_at"),
-    @Index(name = "idx_order_email", columnList = "customer_email")
-})
-public class Order {
+@Table("orders")
+public class Order implements Auditable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @NotNull(message = "Order number is required")
     @Pattern(regexp = "^ORD-\\d{8}-\\d{3}$", message = "Order number must match format ORD-YYYYMMDD-NNN")
-    @Column(name = "order_number", nullable = false, unique = true, length = 20)
     private String orderNumber;
 
     @NotNull(message = "Customer name is required")
     @Size(min = 1, max = 200, message = "Customer name must be between 1 and 200 characters")
-    @Column(name = "customer_name", nullable = false, length = 200)
     private String customerName;
 
     @NotNull(message = "Customer email is required")
     @Size(min = 1, max = 100, message = "Customer email must be between 1 and 100 characters")
-    @Column(name = "customer_email", nullable = false, length = 100)
     private String customerEmail;
 
     @NotNull(message = "Customer phone is required")
     @Size(min = 1, max = 20, message = "Customer phone must be between 1 and 20 characters")
-    @Column(name = "customer_phone", nullable = false, length = 20)
     private String customerPhone;
 
+    // JSONB storage: Custom converters handle ShippingAddress <-> PGobject conversion
     @NotNull(message = "Shipping address is required")
-    @Column(name = "shipping_address", nullable = false, columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, String> shippingAddress;
+    @Column("shipping_address")
+    private ShippingAddress shippingAddress;
+
 
     @NotNull(message = "Subtotal is required")
-    @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
 
     @NotNull(message = "Order status is required")
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, columnDefinition = "order_status")
     private OrderStatus status = OrderStatus.PENDING;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<OrderItem> items = new ArrayList<>();
+    @MappedCollection(idColumn = "order_id")
+    private Set<OrderItem> items = new HashSet<>();
 
-    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private PaymentTransaction paymentTransaction;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @Column(name = "completed_at")
     private Instant completedAt;
 
     // Constructors
@@ -130,11 +97,11 @@ public class Order {
      * @param customerName    the customer's full name
      * @param customerEmail   the customer's email
      * @param customerPhone   the customer's phone number
-     * @param shippingAddress the shipping address (JSONB map)
+     * @param shippingAddress the shipping address
      * @param subtotal        the order subtotal
      */
     public Order(String orderNumber, String customerName, String customerEmail,
-                 String customerPhone, Map<String, String> shippingAddress, BigDecimal subtotal) {
+                 String customerPhone, ShippingAddress shippingAddress, BigDecimal subtotal) {
         setOrderNumber(orderNumber);
         setCustomerName(customerName);
         setCustomerEmail(customerEmail);
@@ -148,6 +115,10 @@ public class Order {
 
     public UUID getId() {
         return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
     }
 
     public String getOrderNumber() {
@@ -182,12 +153,12 @@ public class Order {
         this.customerPhone = customerPhone;
     }
 
-    public Map<String, String> getShippingAddress() {
+    public ShippingAddress getShippingAddress() {
         return shippingAddress;
     }
 
-    public void setShippingAddress(Map<String, String> shippingAddress) {
-        this.shippingAddress = shippingAddress != null ? Map.copyOf(shippingAddress) : Collections.emptyMap();
+    public void setShippingAddress(ShippingAddress shippingAddress) {
+        this.shippingAddress = shippingAddress;
     }
 
     public BigDecimal getSubtotal() {
@@ -207,26 +178,31 @@ public class Order {
     }
 
     public List<OrderItem> getItems() {
-        return Collections.unmodifiableList(items);
+        return Collections.unmodifiableList(new ArrayList<>(items));
     }
 
-    public PaymentTransaction getPaymentTransaction() {
-        return paymentTransaction;
+    public void setItems(Set<OrderItem> items) {
+        this.items = items != null ? new HashSet<>(items) : new HashSet<>();
     }
 
-    public void setPaymentTransaction(PaymentTransaction paymentTransaction) {
-        this.paymentTransaction = paymentTransaction;
-        if (paymentTransaction != null && paymentTransaction.getOrder() != this) {
-            paymentTransaction.setOrder(this);
-        }
-    }
-
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     public Instant getCompletedAt() {
@@ -335,16 +311,6 @@ public class Order {
             throw new IllegalArgumentException("Order item cannot be null");
         }
         items.add(item);
-        item.setOrder(this);
-    }
-
-    /**
-     * Returns the payment status from the associated payment transaction.
-     *
-     * @return the payment status, or null if no payment transaction exists
-     */
-    public PaymentStatus getPaymentStatus() {
-        return paymentTransaction != null ? paymentTransaction.getStatus() : null;
     }
 
     // Object methods

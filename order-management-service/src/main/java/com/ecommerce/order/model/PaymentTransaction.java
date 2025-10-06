@@ -1,23 +1,11 @@
 package com.ecommerce.order.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.ForeignKey;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.Index;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -51,58 +39,39 @@ import java.util.UUID;
  * FAILED
  * </pre>
  */
-@Entity
-@Table(name = "payment_transactions", indexes = {
-    @Index(name = "idx_payment_order", columnList = "order_id", unique = true),
-    @Index(name = "idx_payment_status", columnList = "status"),
-    @Index(name = "idx_payment_external", columnList = "external_transaction_id")
-})
-public class PaymentTransaction {
+@Table("payment_transactions")
+public class PaymentTransaction implements Auditable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @NotNull(message = "Order is required")
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false, unique = true, foreignKey = @ForeignKey(name = "fk_payment_order"))
-    private Order order;
+    @NotNull(message = "Order ID is required")
+    @Column("order_id")
+    private UUID orderId;
 
     @NotNull(message = "Payment amount is required")
-    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
     @NotNull(message = "Payment status is required")
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, columnDefinition = "payment_status")
     private PaymentStatus status = PaymentStatus.PENDING;
 
     @NotNull(message = "Payment method is required")
     @Size(min = 1, max = 50, message = "Payment method must be between 1 and 50 characters")
-    @Column(name = "payment_method", nullable = false, length = 50)
     private String paymentMethod;
 
     @Size(max = 100, message = "External transaction ID must not exceed 100 characters")
-    @Column(name = "external_transaction_id", length = 100)
     private String externalTransactionId;
 
-    @Column(name = "failure_reason", columnDefinition = "TEXT")
     private String failureReason;
 
     @NotNull(message = "Attempt count is required")
     @Min(value = 1, message = "Attempt count must be at least 1")
-    @Column(name = "attempt_count", nullable = false)
     private Integer attemptCount = 1;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @Column(name = "completed_at")
     private Instant completedAt;
 
     // Constructors
@@ -120,9 +89,9 @@ public class PaymentTransaction {
      * @param amount        the payment amount (required, must match order subtotal)
      * @param paymentMethod the payment method (e.g., MOCK, STRIPE, PAYPAL)
      */
-    public PaymentTransaction(Order order, BigDecimal amount, String paymentMethod) {
-        if (order == null) {
-            throw new IllegalArgumentException("Order cannot be null");
+    public PaymentTransaction(UUID orderId, BigDecimal amount, String paymentMethod) {
+        if (orderId == null) {
+            throw new IllegalArgumentException("Order ID cannot be null");
         }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
@@ -131,7 +100,7 @@ public class PaymentTransaction {
             throw new IllegalArgumentException("Payment method cannot be null or blank");
         }
 
-        this.order = order;
+        this.orderId = orderId;
         this.amount = amount;
         this.paymentMethod = paymentMethod;
         this.status = PaymentStatus.PENDING;
@@ -144,12 +113,16 @@ public class PaymentTransaction {
         return id;
     }
 
-    public Order getOrder() {
-        return order;
+    public void setId(UUID id) {
+        this.id = id;
     }
 
-    public void setOrder(Order order) {
-        this.order = order;
+    public UUID getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(UUID orderId) {
+        this.orderId = orderId;
     }
 
     public BigDecimal getAmount() {
@@ -162,6 +135,10 @@ public class PaymentTransaction {
 
     public PaymentStatus getStatus() {
         return status;
+    }
+
+    public void setStatus(PaymentStatus status) {
+        this.status = status;
     }
 
     public String getPaymentMethod() {
@@ -192,16 +169,36 @@ public class PaymentTransaction {
         return attemptCount;
     }
 
+    public void setAttemptCount(Integer attemptCount) {
+        this.attemptCount = attemptCount;
+    }
+
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
     public Instant getCompletedAt() {
         return completedAt;
+    }
+
+    public void setCompletedAt(Instant completedAt) {
+        this.completedAt = completedAt;
     }
 
     // Business methods
@@ -337,4 +334,3 @@ public class PaymentTransaction {
                 '}';
     }
 }
-

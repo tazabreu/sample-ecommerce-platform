@@ -6,11 +6,13 @@ import com.ecommerce.order.model.OrderItem;
 import com.ecommerce.order.model.OrderStatus;
 import com.ecommerce.order.model.PaymentTransaction;
 import com.ecommerce.order.model.ProcessedEvent;
+import com.ecommerce.order.model.ShippingAddress;
 import com.ecommerce.order.payment.PaymentException;
 import com.ecommerce.order.payment.PaymentRequest;
 import com.ecommerce.order.payment.PaymentResult;
 import com.ecommerce.order.payment.PaymentService;
 import com.ecommerce.order.repository.OrderRepository;
+import com.ecommerce.order.repository.PaymentTransactionRepository;
 import com.ecommerce.order.repository.ProcessedEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,8 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -56,17 +60,20 @@ public class OrderProcessingService {
 
     private final OrderRepository orderRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
     private final PaymentService paymentService;
     private final PaymentCompletedService paymentCompletedService;
 
     public OrderProcessingService(
             OrderRepository orderRepository,
             ProcessedEventRepository processedEventRepository,
+            PaymentTransactionRepository paymentTransactionRepository,
             PaymentService paymentService,
             PaymentCompletedService paymentCompletedService
     ) {
         this.orderRepository = orderRepository;
         this.processedEventRepository = processedEventRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
         this.paymentService = paymentService;
         this.paymentCompletedService = paymentCompletedService;
     }
@@ -138,23 +145,23 @@ public class OrderProcessingService {
 
         // 2. Create Order entity
         Order order = createOrderFromEvent(event);
+        order.setId(UUID.randomUUID());
+
+        List<OrderItem> orderItems = createOrderItemsFromEvent(event);
+        order.setItems(new HashSet<>(orderItems));
+
         order = orderRepository.save(order);
 
-        logger.info("Created order - orderId: {}, orderNumber: {}, status: {}", 
-                order.getId(), order.getOrderNumber(), order.getStatus());
-
-        // 3. Create OrderItem entities
-        List<OrderItem> orderItems = createOrderItemsFromEvent(event, order);
-        orderItems.forEach(order::addItem);
+        logger.info("Created order - orderId: {}, orderNumber: {}, items: {}, subtotal: {}",
+                order.getId(), order.getOrderNumber(), order.getItems().size(), order.getSubtotal());
 
         // 4. Create PaymentTransaction
         PaymentTransaction paymentTransaction = createPaymentTransaction(order);
-        order.setPaymentTransaction(paymentTransaction);
+        paymentTransaction.setId(UUID.randomUUID());
+        paymentTransactionRepository.save(paymentTransaction);
 
-        orderRepository.save(order);
-
-        logger.info("Created order items and payment transaction - orderNumber: {}, items: {}, subtotal: {}", 
-                order.getOrderNumber(), orderItems.size(), order.getSubtotal());
+        logger.info("Created payment transaction - orderNumber: {}, transactionId: {}",
+                order.getOrderNumber(), paymentTransaction.getId());
 
         // 5. Record event as processed
         ProcessedEvent processedEvent = new ProcessedEvent(event.eventId(), event.eventType());
@@ -164,7 +171,7 @@ public class OrderProcessingService {
                 event.eventId(), event.orderNumber());
 
         // 6. Trigger payment processing asynchronously
-        processPaymentAsync(order);
+        processPaymentAsync(order.getId(), paymentTransaction.getId());
     }
 
     /**
@@ -174,18 +181,20 @@ public class OrderProcessingService {
      * @return the order entity
      */
     private Order createOrderFromEvent(OrderCreatedEvent event) {
+        ShippingAddress shippingAddress = new ShippingAddress(
+                event.customer().shippingAddress().street(),
+                event.customer().shippingAddress().city(),
+                event.customer().shippingAddress().state(),
+                event.customer().shippingAddress().postalCode(),
+                event.customer().shippingAddress().country()
+        );
+
         return new Order(
                 event.orderNumber(),
                 event.customer().name(),
                 event.customer().email(),
                 event.customer().phone(),
-                Map.of(
-                        "street", event.customer().shippingAddress().street(),
-                        "city", event.customer().shippingAddress().city(),
-                        "state", event.customer().shippingAddress().state(),
-                        "postalCode", event.customer().shippingAddress().postalCode(),
-                        "country", event.customer().shippingAddress().country()
-                ),
+                shippingAddress,
                 event.subtotal()
         );
     }
@@ -197,16 +206,19 @@ public class OrderProcessingService {
      * @param order the order entity
      * @return list of order items
      */
-    private List<OrderItem> createOrderItemsFromEvent(OrderCreatedEvent event, Order order) {
+    private List<OrderItem> createOrderItemsFromEvent(OrderCreatedEvent event) {
         return event.items().stream()
-                .map(itemEvent -> new OrderItem(
-                        order,
-                        itemEvent.productId(),
-                        itemEvent.productSku(),
-                        itemEvent.productName(),
-                        itemEvent.quantity(),
-                        itemEvent.priceSnapshot()
-                ))
+                .map(itemEvent -> {
+                    OrderItem orderItem = new OrderItem(
+                            itemEvent.productId(),
+                            itemEvent.productSku(),
+                            itemEvent.productName(),
+                            itemEvent.quantity(),
+                            itemEvent.priceSnapshot()
+                    );
+                    orderItem.setId(UUID.randomUUID());
+                    return orderItem;
+                })
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
@@ -217,7 +229,7 @@ public class OrderProcessingService {
      * @return payment transaction
      */
     private PaymentTransaction createPaymentTransaction(Order order) {
-        return new PaymentTransaction(order, order.getSubtotal(), "MOCK");
+        return new PaymentTransaction(order.getId(), order.getSubtotal(), "MOCK");
     }
 
     /**
@@ -226,8 +238,14 @@ public class OrderProcessingService {
      * @param order the order to process payment for
      */
     @Async
-    public void processPaymentAsync(Order order) {
+    public void processPaymentAsync(UUID orderId, UUID paymentTransactionId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalStateException("Order not found for payment processing: " + orderId));
+
         logger.info("Starting async payment processing - orderNumber: {}", order.getOrderNumber());
+
+        PaymentTransaction transaction = paymentTransactionRepository.findById(paymentTransactionId)
+                .orElseThrow(() -> new IllegalStateException("PaymentTransaction not found: " + paymentTransactionId));
 
         try {
             // Update order status to PROCESSING
@@ -245,16 +263,17 @@ public class OrderProcessingService {
             PaymentResult result = paymentService.processPayment(paymentRequest);
 
             // Publish PaymentCompletedEvent
-            paymentCompletedService.publishPaymentCompleted(order, result);
+            paymentCompletedService.publishPaymentCompleted(order, transaction, result);
 
         } catch (PaymentException ex) {
-            logger.error("Payment processing failed - orderNumber: {}, error: {}", 
+            logger.error("Payment processing failed - orderNumber: {}, error: {}",
                     order.getOrderNumber(), ex.getMessage(), ex);
 
-            // Publish failed payment event
+            transaction.incrementAttemptCount();
+            paymentTransactionRepository.save(transaction);
+
             PaymentResult failureResult = PaymentResult.failure(ex.getMessage());
-            paymentCompletedService.publishPaymentCompleted(order, failureResult);
+            paymentCompletedService.publishPaymentCompleted(order, transaction, failureResult);
         }
     }
 }
-

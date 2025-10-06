@@ -1,10 +1,9 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -20,8 +19,7 @@ import java.util.UUID;
  *   <li>If max retries exceeded → status=FAILED, sent to DLQ</li>
  * </ol>
  */
-@Entity
-@Table(name = "order_created_outbox")
+@Table("order_created_outbox")
 public class OrderCreatedOutbox {
 
     public enum Status {
@@ -29,42 +27,25 @@ public class OrderCreatedOutbox {
     }
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "aggregate_id", nullable = false)
     private UUID aggregateId;
 
-    @Column(name = "aggregate_type", length = 50, nullable = false)
     private String aggregateType = "ORDER";
 
-    @Column(name = "event_type", length = 100, nullable = false)
     private String eventType = "OrderCreatedEvent";
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "payload", columnDefinition = "jsonb", nullable = false)
     private String payload;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
-    @Column(name = "published_at")
-    private LocalDateTime publishedAt;
+    private Instant publishedAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 20, nullable = false)
     private Status status = Status.PENDING;
 
-    @Column(name = "retry_count", nullable = false)
     private Integer retryCount = 0;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
 
     // Constructors
     public OrderCreatedOutbox() {
@@ -73,6 +54,7 @@ public class OrderCreatedOutbox {
     public OrderCreatedOutbox(UUID aggregateId, String payload) {
         this.aggregateId = aggregateId;
         this.payload = payload;
+        this.createdAt = Instant.now();
     }
 
     // Getters and Setters
@@ -83,6 +65,7 @@ public class OrderCreatedOutbox {
     public void setId(UUID id) {
         this.id = id;
     }
+
 
     public UUID getAggregateId() {
         return aggregateId;
@@ -116,19 +99,19 @@ public class OrderCreatedOutbox {
         this.payload = payload;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
 
-    public LocalDateTime getPublishedAt() {
+    public Instant getPublishedAt() {
         return publishedAt;
     }
 
-    public void setPublishedAt(LocalDateTime publishedAt) {
+    public void setPublishedAt(Instant publishedAt) {
         this.publishedAt = publishedAt;
     }
 
@@ -158,7 +141,7 @@ public class OrderCreatedOutbox {
 
     public void markAsPublished() {
         this.status = Status.PUBLISHED;
-        this.publishedAt = LocalDateTime.now();
+        this.publishedAt = Instant.now();
     }
 
     public void markAsFailed(String error) {

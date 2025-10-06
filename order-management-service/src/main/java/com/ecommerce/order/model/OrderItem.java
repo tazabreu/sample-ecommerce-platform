@@ -1,20 +1,11 @@
 package com.ecommerce.order.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.ForeignKey;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -48,51 +39,33 @@ import java.util.UUID;
  *   <li>Subtotal: Calculated field (quantity × priceSnapshot)</li>
  * </ul>
  */
-@Entity
-@Table(name = "order_items", indexes = {
-    @Index(name = "idx_orderitem_order", columnList = "order_id"),
-    @Index(name = "idx_orderitem_product", columnList = "product_id")
-})
+@Table("order_items")
 public class OrderItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @NotNull(message = "Order is required")
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false, foreignKey = @ForeignKey(name = "fk_orderitem_order"))
-    private Order order;
-
     @NotNull(message = "Product ID is required")
-    @Column(name = "product_id", nullable = false)
+    @Column("product_id")
     private UUID productId;
 
     @NotNull(message = "Product SKU is required")
     @Size(min = 1, max = 50, message = "Product SKU must be between 1 and 50 characters")
-    @Column(name = "product_sku", nullable = false, length = 50)
     private String productSku;
 
     @NotNull(message = "Product name is required")
     @Size(min = 1, max = 200, message = "Product name must be between 1 and 200 characters")
-    @Column(name = "product_name", nullable = false, length = 200)
     private String productName;
 
     @NotNull(message = "Quantity is required")
     @Min(value = 1, message = "Quantity must be at least 1")
-    @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
     @NotNull(message = "Price snapshot is required")
-    @Column(name = "price_snapshot", nullable = false, precision = 10, scale = 2)
     private BigDecimal priceSnapshot;
 
     @NotNull(message = "Subtotal is required")
-    @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     // Constructors
@@ -115,11 +88,8 @@ public class OrderItem {
      * @param quantity      the item quantity (required, positive)
      * @param priceSnapshot the product price at order time
      */
-    public OrderItem(Order order, UUID productId, String productSku, String productName,
+    public OrderItem(UUID productId, String productSku, String productName,
                      int quantity, BigDecimal priceSnapshot) {
-        if (order == null) {
-            throw new IllegalArgumentException("Order cannot be null");
-        }
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null");
         }
@@ -136,13 +106,13 @@ public class OrderItem {
             throw new IllegalArgumentException("Price snapshot must be positive");
         }
 
-        this.order = order;
         this.productId = productId;
         this.productSku = productSku;
         this.productName = productName;
         this.quantity = quantity;
         this.priceSnapshot = priceSnapshot;
         this.subtotal = calculateSubtotal(quantity, priceSnapshot);
+        this.createdAt = Instant.now();
     }
 
     // Getters (no setters - immutable)
@@ -151,41 +121,64 @@ public class OrderItem {
         return id;
     }
 
-    public Order getOrder() {
-        return order;
-    }
-
-    // Package-private setter for bidirectional relationship management
-    void setOrder(Order order) {
-        this.order = order;
+    public void setId(UUID id) {
+        this.id = id;
     }
 
     public UUID getProductId() {
         return productId;
     }
 
+    public void setProductId(UUID productId) {
+        this.productId = productId;
+    }
+
     public String getProductSku() {
         return productSku;
+    }
+
+    public void setProductSku(String productSku) {
+        this.productSku = productSku;
     }
 
     public String getProductName() {
         return productName;
     }
 
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
     public Integer getQuantity() {
         return quantity;
+    }
+
+    public void setQuantity(Integer quantity) {
+        this.quantity = quantity;
     }
 
     public BigDecimal getPriceSnapshot() {
         return priceSnapshot;
     }
 
+    public void setPriceSnapshot(BigDecimal priceSnapshot) {
+        this.priceSnapshot = priceSnapshot;
+    }
+
     public BigDecimal getSubtotal() {
         return subtotal;
     }
 
+    public void setSubtotal(BigDecimal subtotal) {
+        this.subtotal = subtotal;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 
     // Business methods
@@ -249,4 +242,3 @@ public class OrderItem {
                 '}';
     }
 }
-

@@ -43,9 +43,6 @@ public interface CartMapper {
      * @param cartItem the entity
      * @return the DTO
      */
-    @Mapping(target = "productId", source = "product.id")
-    @Mapping(target = "productSku", source = "product.sku")
-    @Mapping(target = "productName", source = "product.name")
     CartItemDto toCartItemDto(CartItem cartItem);
 
     /**
@@ -56,4 +53,3 @@ public interface CartMapper {
      */
     List<CartItemDto> toCartItemDtoList(List<CartItem> cartItems);
 }
-

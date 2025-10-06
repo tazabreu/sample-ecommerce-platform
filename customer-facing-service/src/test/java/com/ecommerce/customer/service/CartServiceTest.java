@@ -74,12 +74,28 @@ class CartServiceTest {
 
         // Setup Redis template mock
         when(cartRedisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        when(productRepository.findAllById(anyIterable())).thenAnswer(invocation -> {
+            Iterable<UUID> ids = invocation.getArgument(0);
+            java.util.List<Product> products = new java.util.ArrayList<>();
+            ids.forEach(id -> {
+                if (productId.equals(id)) {
+                    products.add(product);
+                }
+            });
+            return products;
+        });
     }
 
     @Test
     void getCart_shouldReturnFromRedis_whenExists() {
         // Given
         Cart cart = new Cart(sessionId, 30);
+        CartItem cachedItem = new CartItem(productId, 1, product.getPrice());
+        cachedItem.setProductSku(null);
+        cachedItem.setProductName(null);
+        cart.setItems(java.util.List.of(cachedItem));
+
         when(valueOperations.get("cart:" + sessionId)).thenReturn(cart);
 
         // When
@@ -87,7 +103,11 @@ class CartServiceTest {
 
         // Then
         assertThat(result).isEqualTo(cart);
-        verify(cartRepository, never()).findWithItemsBySessionId(any());
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.getProductSku()).isEqualTo(product.getSku());
+            assertThat(item.getProductName()).isEqualTo(product.getName());
+        });
+        verify(cartRepository, never()).findBySessionId(any());
     }
 
     @Test
@@ -99,8 +119,11 @@ class CartServiceTest {
         doReturn(cartId).when(cart).getId();
         when(cart.isExpired()).thenReturn(false);
 
+        CartItem storedItem = new CartItem(productId, 1, product.getPrice());
+        cart.setItems(java.util.List.of(storedItem));
+
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(cart));
+        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
 
         // When
         Cart result = cartService.getCart(sessionId);
@@ -108,6 +131,10 @@ class CartServiceTest {
         // Then
         assertThat(result).isEqualTo(cart);
         verify(valueOperations).set(eq("cart:" + sessionId), eq(cart), any(Duration.class));
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.getProductSku()).isEqualTo(product.getSku());
+            assertThat(item.getProductName()).isEqualTo(product.getName());
+        });
     }
 
     @Test
@@ -119,7 +146,7 @@ class CartServiceTest {
         doReturn(cartId).when(savedCart).getId();
 
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.empty());
+        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.empty());
         when(cartRepository.save(any(Cart.class))).thenReturn(savedCart);
 
         // When
@@ -144,7 +171,7 @@ class CartServiceTest {
         doReturn(cartId).when(savedCart).getId();
 
         when(valueOperations.get("cart:" + sessionId)).thenReturn(null);
-        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(expiredCart));
+        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(expiredCart));
         when(cartRepository.save(any(Cart.class))).thenReturn(savedCart);
 
         // When
@@ -160,7 +187,7 @@ class CartServiceTest {
         // Given
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         Cart cart = new Cart(sessionId, 30);
-        when(cartRepository.findWithItemsBySessionId(sessionId)).thenReturn(Optional.of(cart));
+        when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
         when(cartRepository.save(any(Cart.class))).thenReturn(cart);
 
         // When
@@ -169,7 +196,8 @@ class CartServiceTest {
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getItems().get(0).getProduct()).isEqualTo(product);
+        assertThat(result.getItems().get(0).getProductId()).isEqualTo(productId);
+        assertThat(result.getItems().get(0).getProductSku()).isEqualTo(product.getSku());
         assertThat(result.getItems().get(0).getQuantity()).isEqualTo(2);
         verify(cartRepository).save(cart);
     }

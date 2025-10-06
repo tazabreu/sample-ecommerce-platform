@@ -34,7 +34,7 @@ public class OutboxPublisher {
     private static final Logger logger = LoggerFactory.getLogger(OutboxPublisher.class);
     private static final int BATCH_SIZE = 100;
     private static final int MAX_RETRIES = 5;
-    private static final String TOPIC = "order-events";
+    private static final String TOPIC = "orders.created";
 
     private final OrderCreatedOutboxRepository outboxRepository;
     private final KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate;
@@ -89,7 +89,20 @@ public class OutboxPublisher {
 
         // Mark as published
         outbox.markAsPublished();
-        outboxRepository.save(outbox);
+
+        // Use custom update method with JSONB cast
+        outboxRepository.updateOutbox(
+            outbox.getId(),
+            outbox.getAggregateId(),
+            outbox.getAggregateType(),
+            outbox.getEventType(),
+            outbox.getPayload(),
+            outbox.getCreatedAt(),
+            outbox.getPublishedAt(),
+            outbox.getStatus().name(),
+            outbox.getRetryCount(),
+            outbox.getErrorMessage()
+        );
 
         logger.info("Published outbox event - outboxId: {}, orderId: {}",
                 outbox.getId(), outbox.getAggregateId());
@@ -120,6 +133,18 @@ public class OutboxPublisher {
                     outbox.getRetryCount(), MAX_RETRIES, outbox.getId(), outbox.getAggregateId(), error.getMessage());
         }
 
-        outboxRepository.save(outbox);
+        // Use custom update method with JSONB cast
+        outboxRepository.updateOutbox(
+            outbox.getId(),
+            outbox.getAggregateId(),
+            outbox.getAggregateType(),
+            outbox.getEventType(),
+            outbox.getPayload(),
+            outbox.getCreatedAt(),
+            outbox.getPublishedAt(),
+            outbox.getStatus().name(),
+            outbox.getRetryCount(),
+            outbox.getErrorMessage()
+        );
     }
 }

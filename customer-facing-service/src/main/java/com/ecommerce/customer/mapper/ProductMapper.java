@@ -34,7 +34,6 @@ public interface ProductMapper {
      * @param product the entity
      * @return the DTO
      */
-    @Mapping(target = "categoryId", source = "category.id")
     ProductDto toDto(Product product);
 
     /**
@@ -52,7 +51,7 @@ public interface ProductMapper {
      * @return the entity
      */
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "category", ignore = true)
+    @Mapping(target = "categoryId", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
@@ -68,10 +67,9 @@ public interface ProductMapper {
      */
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "sku", ignore = true)
-    @Mapping(target = "category", ignore = true)
+    @Mapping(target = "categoryId", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
     void updateEntityFromDto(UpdateProductRequest request, @MappingTarget Product product);
 }
-

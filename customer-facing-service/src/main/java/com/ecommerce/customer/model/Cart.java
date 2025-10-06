@@ -1,11 +1,11 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.MappedCollection;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -34,40 +34,28 @@ import java.util.UUID;
  *   <li>One-to-Many: A cart contains multiple cart items</li>
  * </ul>
  */
-@Entity
-@Table(name = "carts", indexes = {
-    @Index(name = "idx_cart_session", columnList = "session_id", unique = true),
-    @Index(name = "idx_cart_expires", columnList = "expires_at")
-})
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Cart implements Serializable {
+@Table("carts")
+public class Cart implements Auditable, Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @NotNull(message = "Session ID is required")
     @Size(min = 1, max = 100, message = "Session ID must be between 1 and 100 characters")
-    @Column(name = "session_id", nullable = false, unique = true, length = 100)
     private String sessionId;
 
-    @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @MappedCollection(idColumn = "cart_id", keyColumn = "item_index")
     private List<CartItem> items = new ArrayList<>();
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
     // Constructors
@@ -96,6 +84,11 @@ public class Cart implements Serializable {
         return id;
     }
 
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+
     public String getSessionId() {
         return sessionId;
     }
@@ -108,16 +101,36 @@ public class Cart implements Serializable {
         return subtotal;
     }
 
+    public void setSubtotal(BigDecimal subtotal) {
+        this.subtotal = subtotal;
+    }
+
     public List<CartItem> getItems() {
         return items;
     }
 
+    public void setItems(List<CartItem> items) {
+        this.items = items;
+    }
+
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     public Instant getExpiresAt() {
@@ -147,7 +160,7 @@ public class Cart implements Serializable {
 
         // Check if product already exists in cart
         CartItem existingItem = items.stream()
-            .filter(item -> item.getProduct().getId().equals(product.getId()))
+            .filter(item -> item.getProductId().equals(product.getId()))
             .findFirst()
             .orElse(null);
 
@@ -157,7 +170,7 @@ public class Cart implements Serializable {
             existingItem.calculateSubtotal();
         } else {
             // Create new cart item
-            CartItem newItem = new CartItem(this, product, quantity, product.getPrice());
+            CartItem newItem = new CartItem(product.getId(), quantity, product.getPrice());
             items.add(newItem);
             existingItem = newItem;
         }
@@ -173,7 +186,7 @@ public class Cart implements Serializable {
      * @return true if item was removed, false if not found
      */
     public boolean removeItem(UUID cartItemId) {
-        boolean removed = items.removeIf(item -> item.getId().equals(cartItemId));
+        boolean removed = items.removeIf(item -> cartItemId.equals(item.getId()));
         if (removed) {
             calculateSubtotal();
         }
@@ -194,7 +207,7 @@ public class Cart implements Serializable {
         }
 
         CartItem item = items.stream()
-            .filter(i -> i.getId().equals(cartItemId))
+            .filter(i -> cartItemId.equals(i.getId()))
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("Cart item not found: " + cartItemId));
 
@@ -294,4 +307,3 @@ public class Cart implements Serializable {
                 '}';
     }
 }
-

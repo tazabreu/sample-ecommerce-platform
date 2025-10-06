@@ -9,19 +9,15 @@ import java.util.List;
  */
 public record OrderPageDto(
         @NotNull
-        List<OrderDto> orders,
-
-        int currentPage,
-
-        int pageSize,
+        List<OrderDto> content,
 
         long totalElements,
 
         int totalPages,
 
-        boolean first,
+        int size,
 
-        boolean last
+        int number
 ) {
 }
 

@@ -1,9 +1,9 @@
 package com.ecommerce.order.repository;
 
 import com.ecommerce.order.model.ProcessedEvent;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Modifying;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -17,7 +17,7 @@ import java.util.UUID;
  * Kafka consumer. Each event ID is recorded once to prevent duplicate processing.</p>
  */
 @Repository
-public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, UUID> {
+public interface ProcessedEventRepository extends CrudRepository<ProcessedEvent, UUID> {
 
     /**
      * Checks if an event with the given ID has already been processed.
@@ -36,7 +36,7 @@ public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, 
      * @return the number of records deleted
      */
     @Modifying
-    @Query("DELETE FROM ProcessedEvent pe WHERE pe.processedAt < :processedBefore")
+    @Query("DELETE FROM processed_events WHERE processed_at < :processedBefore")
     int deleteOldProcessedEvents(@Param("processedBefore") Instant processedBefore);
 
     /**
@@ -45,7 +45,6 @@ public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, 
      *
      * @return the count of processed events
      */
-    @Query("SELECT COUNT(pe) FROM ProcessedEvent pe")
+    @Query("SELECT COUNT(*) FROM processed_events")
     long countTotalProcessedEvents();
 }
-

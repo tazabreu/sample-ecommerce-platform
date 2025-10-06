@@ -5,12 +5,10 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/order_db}
     username: ${SPRING_DATASOURCE_USERNAME:order_user}
     password: ${SPRING_DATASOURCE_PASSWORD:dev_password_order}
-  
-  jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+  data:
+    jdbc:
+      repositories:
+        enabled: true
 
 logging:
   level:

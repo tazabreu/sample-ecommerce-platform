@@ -1,10 +1,8 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.OrderNumberSequence;
-import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -15,7 +13,7 @@ import java.util.Optional;
  * Provides pessimistic locking for concurrent-safe sequence generation.
  */
 @Repository
-public interface OrderNumberSequenceRepository extends JpaRepository<OrderNumberSequence, String> {
+public interface OrderNumberSequenceRepository extends CrudRepository<OrderNumberSequence, String> {
 
     /**
      * Find order number sequence by date key with pessimistic write lock.
@@ -24,7 +22,6 @@ public interface OrderNumberSequenceRepository extends JpaRepository<OrderNumber
      * @param dateKey the date key in YYYYMMDD format
      * @return the order number sequence, if found
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT ons FROM OrderNumberSequence ons WHERE ons.dateKey = :dateKey")
+    @Query("SELECT * FROM order_number_sequence WHERE date_key = :dateKey FOR UPDATE")
     Optional<OrderNumberSequence> findByDateKeyWithLock(@Param("dateKey") String dateKey);
 }

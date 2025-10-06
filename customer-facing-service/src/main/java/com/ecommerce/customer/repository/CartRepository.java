@@ -1,10 +1,9 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.Cart;
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Modifying;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -18,7 +17,7 @@ import java.util.UUID;
  * <p>Provides standard CRUD operations plus custom queries for cart management and cleanup.</p>
  */
 @Repository
-public interface CartRepository extends JpaRepository<Cart, UUID> {
+public interface CartRepository extends CrudRepository<Cart, UUID> {
 
     /**
      * Finds a cart by its session ID.
@@ -28,20 +27,14 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      */
     Optional<Cart> findBySessionId(String sessionId);
 
+    @Query("SELECT * FROM carts WHERE session_id = :sessionId")
+    Optional<Cart> findWithItemsBySessionId(@Param("sessionId") String sessionId);
+
     /**
      * Finds a cart by session ID eagerly loading items and associated products.
      *
      * @param sessionId the session identifier
      * @return an Optional containing the cart with items, or empty if not found
-     */
-    @EntityGraph(attributePaths = {"items", "items.product"})
-    Optional<Cart> findWithItemsBySessionId(String sessionId);
-
-    /**
-     * Checks if a cart with the given session ID exists.
-     *
-     * @param sessionId the session identifier
-     * @return true if a cart with the session ID exists, false otherwise
      */
     boolean existsBySessionId(String sessionId);
 
@@ -52,7 +45,7 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      * @return the number of carts deleted (0 or 1)
      */
     @Modifying
-    @Query("DELETE FROM Cart c WHERE c.sessionId = :sessionId")
+    @Query("DELETE FROM carts WHERE session_id = :sessionId")
     int deleteBySessionId(@Param("sessionId") String sessionId);
 
     /**
@@ -63,7 +56,7 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      * @return the number of carts deleted
      */
     @Modifying
-    @Query("DELETE FROM Cart c WHERE c.expiresAt < :expirationTime")
+    @Query("DELETE FROM carts WHERE expires_at < :expirationTime")
     int deleteByExpiresAtBefore(@Param("expirationTime") Instant expirationTime);
 
     /**
@@ -73,7 +66,7 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      * @param expirationTime the timestamp to compare against
      * @return a list of expired carts
      */
-    @Query("SELECT c FROM Cart c WHERE c.expiresAt < :expirationTime")
+    @Query("SELECT * FROM carts WHERE expires_at < :expirationTime")
     java.util.List<Cart> findExpiredCarts(@Param("expirationTime") Instant expirationTime);
 
     /**
@@ -82,7 +75,6 @@ public interface CartRepository extends JpaRepository<Cart, UUID> {
      * @param currentTime the current timestamp
      * @return the count of active carts
      */
-    @Query("SELECT COUNT(c) FROM Cart c WHERE c.expiresAt > :currentTime")
+    @Query("SELECT COUNT(*) FROM carts WHERE expires_at > :currentTime")
     long countActiveCarts(@Param("currentTime") Instant currentTime);
 }
-

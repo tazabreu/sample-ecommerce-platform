@@ -5,14 +5,10 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/customer_db}
     username: ${SPRING_DATASOURCE_USERNAME:customer_user}
     password: ${SPRING_DATASOURCE_PASSWORD:dev_password_customer}
-  
-  jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-  
   data:
+    jdbc:
+      repositories:
+        enabled: true
     redis:
       password: dev_redis_password
 

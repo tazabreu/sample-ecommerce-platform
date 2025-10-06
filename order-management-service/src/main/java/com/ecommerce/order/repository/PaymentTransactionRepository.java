@@ -4,8 +4,8 @@ import com.ecommerce.order.model.PaymentStatus;
 import com.ecommerce.order.model.PaymentTransaction;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -21,7 +21,17 @@ import java.util.UUID;
  * management, analytics, and reconciliation.</p>
  */
 @Repository
-public interface PaymentTransactionRepository extends JpaRepository<PaymentTransaction, UUID> {
+public interface PaymentTransactionRepository extends PagingAndSortingRepository<PaymentTransaction, UUID> {
+
+    /**
+     * Find payment transaction by ID.
+     */
+    Optional<PaymentTransaction> findById(UUID id);
+
+    /**
+     * Persist payment transaction explicitly (required in JDBC).
+     */
+    <S extends PaymentTransaction> S save(S entity);
 
     /**
      * Finds a payment transaction by order ID.
@@ -87,7 +97,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      * @param createdBefore the timestamp threshold
      * @return a list of pending payment transactions
      */
-    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.status = 'PENDING' AND pt.createdAt < :createdBefore")
+    @Query("SELECT * FROM payment_transactions WHERE status = 'PENDING' AND created_at < :createdBefore")
     List<PaymentTransaction> findStalePendingPayments(@Param("createdBefore") Instant createdBefore);
 
     /**
@@ -95,10 +105,10 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      *
      * @return the success rate as a decimal (0.0 to 1.0), or null if no payments
      */
-    @Query("SELECT " +
-           "CAST(COUNT(CASE WHEN pt.status = 'SUCCESS' THEN 1 END) AS double) / " +
-           "CAST(COUNT(*) AS double) " +
-           "FROM PaymentTransaction pt")
+    @Query("SELECT CASE WHEN COUNT(*) = 0 THEN NULL ELSE " +
+           "CAST(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS double precision) / " +
+           "CAST(COUNT(*) AS double precision) END " +
+           "FROM payment_transactions")
     Double calculateSuccessRate();
 
     /**
@@ -108,7 +118,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      * @param minAttempts the minimum number of attempts
      * @return a list of payment transactions with retry attempts >= minAttempts
      */
-    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.attemptCount >= :minAttempts")
+    @Query("SELECT * FROM payment_transactions WHERE attempt_count >= :minAttempts")
     List<PaymentTransaction> findTransactionsWithMultipleAttempts(@Param("minAttempts") int minAttempts);
 
     /**
@@ -119,8 +129,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      * @param endDate   the end timestamp (inclusive)
      * @return a list of failed payment transactions
      */
-    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.status = 'FAILED' AND pt.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT * FROM payment_transactions WHERE status = 'FAILED' AND created_at BETWEEN :startDate AND :endDate")
     List<PaymentTransaction> findFailedPaymentsBetween(@Param("startDate") Instant startDate, 
                                                         @Param("endDate") Instant endDate);
 }
-

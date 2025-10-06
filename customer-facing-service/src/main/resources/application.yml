@@ -9,6 +9,11 @@ spring:
     virtual:
       enabled: true
 
+  data:
+    jdbc:
+      repositories:
+        enabled: true
+
 
 # Server Configuration
 server:
@@ -27,23 +32,6 @@ server:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-  
-  # JPA Configuration
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-        use_sql_comments: true
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
-    open-in-view: false
-  
   # Flyway Configuration
   flyway:
     enabled: true

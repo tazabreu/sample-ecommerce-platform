@@ -80,7 +80,10 @@ class CheckoutServiceTest {
         UUID productId = UUID.randomUUID();
         product = spy(product);
         doReturn(productId).when(product).getId();
+        product.setCategoryId(UUID.randomUUID());
         when(productRepository.findByIdWithLock(productId)).thenReturn(java.util.Optional.of(product));
+        when(productRepository.findById(productId)).thenReturn(java.util.Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         cart.addItem(product, 2);
 
@@ -104,7 +107,11 @@ class CheckoutServiceTest {
         // Given
         CheckoutRequest request = new CheckoutRequest(sessionId, customerInfo);
         when(cartService.getCart(sessionId)).thenReturn(cart);
-        when(outboxRepository.save(any())).thenReturn(null);
+        // Mock insertOutbox instead of save
+        doNothing().when(outboxRepository).insertOutbox(
+            any(UUID.class), any(UUID.class), any(String.class), any(String.class),
+            any(String.class), any(java.time.Instant.class), any(String.class), any(Integer.class)
+        );
 
         // When
         CheckoutResponse response = checkoutService.checkout(request);
@@ -116,7 +123,18 @@ class CheckoutServiceTest {
         assertThat(response.message()).contains(customerInfo.email());
 
         verify(cartService).deleteCart(sessionId);
-        verify(outboxRepository).save(any());
+        verify(productRepository, atLeastOnce()).save(any(Product.class));
+
+        java.util.List<com.ecommerce.customer.model.CartItem> items = cart.getItems();
+        assertThat(items).hasSize(1);
+        // Cart items don't have IDs in unit tests with mocks (not persisted)
+        // assertThat(items.get(0).getId()).isNotNull();
+
+        // Verify insertOutbox was called (can't capture args easily with void method)
+        verify(outboxRepository).insertOutbox(
+            any(UUID.class), any(UUID.class), any(String.class), any(String.class),
+            any(String.class), any(java.time.Instant.class), any(String.class), any(Integer.class)
+        );
     }
 
     @Test

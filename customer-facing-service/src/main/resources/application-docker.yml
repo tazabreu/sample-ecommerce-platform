@@ -6,13 +6,10 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:customer_user}
     password: ${SPRING_DATASOURCE_PASSWORD:dev_password_customer}
 
-  jpa:
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
-
   data:
+    jdbc:
+      repositories:
+        enabled: true
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}

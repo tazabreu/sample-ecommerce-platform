@@ -1,14 +1,13 @@
 package com.ecommerce.customer.model;
 
-import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -26,37 +25,27 @@ import java.util.UUID;
  *   <li>One-to-Many: A category can have multiple products</li>
  * </ul>
  */
-@Entity
-@Table(name = "categories", indexes = {
-    @Index(name = "idx_category_name", columnList = "name", unique = true)
-})
-public class Category implements java.io.Serializable {
+@Table("categories")
+public class Category implements Auditable, StatefulPersistable<UUID>, java.io.Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @NotNull(message = "Category name is required")
     @Size(min = 1, max = 100, message = "Category name must be between 1 and 100 characters")
-    @Column(name = "name", nullable = false, unique = true, length = 100)
     private String name;
 
     @Size(max = 1000, message = "Description must not exceed 1000 characters")
-    @Column(name = "description", length = 1000)
     private String description;
 
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, orphanRemoval = false)
-    private List<Product> products = new ArrayList<>();
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Transient
+    @JsonIgnore
+    private boolean isNew = true;
 
     // Constructors
 
@@ -83,6 +72,21 @@ public class Category implements java.io.Serializable {
         return id;
     }
 
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @Override
+    public void markPersisted() {
+        this.isNew = false;
+    }
+
+
     public String getName() {
         return name;
     }
@@ -99,36 +103,24 @@ public class Category implements java.io.Serializable {
         this.description = description;
     }
 
-    public List<Product> getProducts() {
-        return products;
-    }
-
+    @Override
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    @Override
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    // Business methods
-
-    /**
-     * Checks if this category has any associated products.
-     *
-     * @return true if the category has products, false otherwise
-     */
-    public boolean hasProducts() {
-        return products != null && !products.isEmpty();
-    }
-
-    /**
-     * Returns the count of products in this category.
-     *
-     * @return the number of products
-     */
-    public int getProductCount() {
-        return products != null ? products.size() : 0;
+    @Override
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     // Object methods
@@ -152,10 +144,8 @@ public class Category implements java.io.Serializable {
                 "id=" + id +
                 ", name='" + name + '\'' +
                 ", description='" + description + '\'' +
-                ", productCount=" + getProductCount() +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 '}';
     }
 }
-

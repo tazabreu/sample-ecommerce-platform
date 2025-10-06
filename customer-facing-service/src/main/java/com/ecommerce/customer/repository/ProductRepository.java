@@ -1,12 +1,10 @@
 package com.ecommerce.customer.repository;
 
 import com.ecommerce.customer.model.Product;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jdbc.repository.query.Query;
+import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -20,7 +18,22 @@ import java.util.UUID;
  * <p>Provides standard CRUD operations plus custom queries for product management and filtering.</p>
  */
 @Repository
-public interface ProductRepository extends JpaRepository<Product, UUID> {
+public interface ProductRepository extends PagingAndSortingRepository<Product, UUID> {
+
+    /**
+     * Find product by ID.
+     */
+    Optional<Product> findById(UUID id);
+
+    /**
+     * Persist product explicitly (required in JDBC).
+     */
+    <S extends Product> S save(S entity);
+
+    /**
+     * Fetch all products matching the provided IDs.
+     */
+    Iterable<Product> findAllById(Iterable<UUID> ids);
 
     /**
      * Finds a product by its SKU.
@@ -68,13 +81,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     /**
      * Finds all active products with pagination.
-     * This is an optimized query that can leverage database indexes.
      *
      * @param pageable pagination information
      * @return a page of active products
      */
-    @Query("SELECT p FROM Product p WHERE p.isActive = true")
-    Page<Product> findAllActiveProducts(Pageable pageable);
+    Page<Product> findByIsActiveTrue(Pageable pageable);
 
     /**
      * Finds all products in a specific category with stock availability.
@@ -82,7 +93,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * @param categoryId the category ID
      * @return a list of products with inventory > 0
      */
-    @Query("SELECT p FROM Product p WHERE p.category.id = :categoryId AND p.inventoryQuantity > 0 AND p.isActive = true")
+    @Query("SELECT * FROM products WHERE category_id = :categoryId AND inventory_quantity > 0 AND is_active = true")
     List<Product> findInStockProductsByCategory(@Param("categoryId") UUID categoryId);
 
     /**
@@ -108,8 +119,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * @param id the product ID
      * @return an Optional containing the locked product, or empty if not found
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT p FROM Product p WHERE p.id = :id")
+    @Query("SELECT * FROM products WHERE id = :id FOR UPDATE")
     Optional<Product> findByIdWithLock(@Param("id") UUID id);
 }
-

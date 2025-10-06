@@ -98,7 +98,7 @@ public class OrderController {
         );
 
         logger.info("Found {} orders (page {} of {})",
-                ordersPage.orders().size(), ordersPage.currentPage() + 1, ordersPage.totalPages());
+                ordersPage.content().size(), ordersPage.number() + 1, ordersPage.totalPages());
 
         return ResponseEntity.ok(ordersPage);
     }
